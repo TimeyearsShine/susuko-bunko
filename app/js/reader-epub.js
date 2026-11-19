@@ -20,18 +20,35 @@ export const PAPERS = {
   paper: { name: '羊皮纸', bg: '#F3EAD6', fg: '#3A3226', accent: '#A8324F', dark: false },
   moss: { name: '浅苔', bg: '#E3EDE1', fg: '#26302A', accent: '#B02A5B', dark: false },
   night: { name: '夜读', bg: '#15171C', fg: '#B9BFCC', accent: '#F283A8', dark: true },
+  quiet: { name: '石墨', bg: '#4A4A4F', fg: '#D9D9DC', accent: '#F4A3BE', dark: true },
+  gray: { name: '纸灰', bg: '#ECEBE8', fg: '#2B2B2E', accent: '#B02A5B', dark: false },
+  calm: { name: '米色', bg: '#EFE5D0', fg: '#36302A', accent: '#9E3550', dark: false },
+  focus: { name: '暖白', bg: '#FDF9F0', fg: '#26221C', accent: '#B0284F', dark: false },
 };
+/** 主题：一组配色 + 字体 + 粗细 + 间距。在“自定义”里改过的地方单独记在 themeMods 里，再选这个主题时还是你改过的样子 */
+export const THEMES = {
+  original: { name: '原始', base: { paper: 'auto', font: 'book', bold: false, lineHeight: 1.8, letterSpacing: 0, wordSpacing: 0, marginPx: 24, para: 0, book: false } },
+  quiet: { name: '安静', base: { paper: 'quiet', font: 'hei', bold: false, lineHeight: 1.85, letterSpacing: 0.02, wordSpacing: 0, marginPx: 26, para: 0, book: false } },
+  paper: { name: '纸张', base: { paper: 'gray', font: 'ming', bold: false, lineHeight: 1.85, letterSpacing: 0.02, wordSpacing: 0, marginPx: 28, para: 0, book: true } },
+  bold: { name: '粗体', base: { paper: 'white', font: 'hei', bold: true, lineHeight: 1.8, letterSpacing: 0.01, wordSpacing: 0, marginPx: 24, para: 0, book: false } },
+  calm: { name: '平静', base: { paper: 'calm', font: 'kai', bold: false, lineHeight: 1.95, letterSpacing: 0.04, wordSpacing: 0, marginPx: 30, para: 0, book: false } },
+  focus: { name: '专注', base: { paper: 'focus', font: 'ming', bold: false, lineHeight: 1.7, letterSpacing: 0, wordSpacing: 0, marginPx: 36, para: 6, book: false } },
+};
+const THEME_KEYS = ['paper', 'font', 'bold', 'lineHeight', 'letterSpacing', 'wordSpacing', 'marginPx', 'para', 'book'];
 export const HL_COLORS = { blue: '#7FB3E6', pink: '#F49AB5', yellow: '#F2CF5B', green: '#8FD19E' };
 const HL_NAMES = { blue: '蓝', pink: '粉', yellow: '黄', green: '绿' };
 const FONTS = {
   book: { name: '原书', css: null },
   hei: { name: '黑体', css: '"PingFang SC","HarmonyOS Sans SC","Microsoft YaHei UI","Microsoft YaHei","Noto Sans CJK SC","Noto Sans SC",sans-serif' },
   ming: { name: '宋体', css: '"Source Han Serif SC","Noto Serif CJK SC","Noto Serif SC","Songti SC","Yu Mincho","SimSun",serif' },
+  kai: { name: '楷体', css: '"Kaiti SC","STKaiti","KaiTi","楷体","AR PL UKai CN","LXGW WenKai","Noto Serif SC",serif' },
+  fang: { name: '仿宋', css: '"STFangsong","FangSong","仿宋","FangSong_GB2312","Noto Serif SC",serif' },
 };
 const DEFAULTS = {
   fontSize: 18, lineHeight: 1.8, marginPx: 24, para: 0, font: 'book', paper: 'auto',
   spread: true, flow: 'paged', writing: 'h', turn: 'rise', volumeKeys: true, hlColor: 'blue',
   hlStyle: 'line', tapMode: 'lr', turnSpeed: 1, selUnit: 'word', autoSec: 30, book: false,
+  bold: false, letterSpacing: 0, wordSpacing: 0, dim: 1, theme: 'original', themeMods: {},
 };
 export function readerSettings() {
   const saved = prefs.get('reader', {});
@@ -52,6 +69,7 @@ export async function open({ host, book, title = book.title, source, progress, o
   const settings = readerSettings();
   let index = 0, page = 0, pages = 1, W = 0, H = 0, loadToken = 0, destroyed = false, busy = false;
   let spreadCols = 1, layoutGen = 0;
+  let custom = null; // 正在“自定义主题”时，进来前的设置（点 ✕ 时恢复）
   const isVertical = () => settings.writing === 'v';
   const isScroll = () => settings.flow === 'scroll' && !isVertical();
   const calm = matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -69,6 +87,7 @@ export async function open({ host, book, title = book.title, source, progress, o
   const backPage = h('iframe.reader-frame.reader-ghost.reader-back', { sandbox: 'allow-same-origin', tabIndex: -1, 'aria-hidden': 'true', title: '' });
   // 纸质书效果：纸张纹理、双页中间的书缝、两侧一页页叠起来的书边
   const bookFx = h('div.book-fx', { 'aria-hidden': 'true' }, h('i.bf-edge.is-l'), h('i.bf-edge.is-r'));
+  const dimmer = h('div.reader-dim', { 'aria-hidden': 'true' }); // 亮度：网页调不了屏幕亮度，盖一层暗色
   const touch = h('div.reader-touch');
   const selLayer = h('div.sel-layer', { hidden: true }); // 选字的两个拖柄和菜单
   const pageMark = h('span.page-mark', { hidden: true, 'aria-hidden': 'true' });
@@ -92,7 +111,7 @@ export async function open({ host, book, title = book.title, source, progress, o
   const root = h('div.reader',
     h('div.reader-stage', frame, ghost, backPage, touch, selLayer, pageMark),
     h('footer.reader-foot', clock.el, footCenter, footRight),
-    bookFx,
+    bookFx, dimmer,
     h('header.reader-top',
       h('button.icon-btn', { type: 'button', 'aria-label': '返回书架', onclick: onExit }, icon('back')),
       h('div.reader-heading', h('span.reader-title', title), topSub, routeChip(book) || ''),
@@ -125,6 +144,7 @@ export async function open({ host, book, title = book.title, source, progress, o
     root.classList.toggle('is-scroll', isScroll());
     root.classList.toggle('is-book', !!settings.book && !isScroll());
     root.style.setProperty('--grain', p.dark ? GRAIN_DARK : GRAIN_LIGHT);
+    root.style.setProperty('--dim', String(1 - Math.min(1, Math.max(0.35, Number(settings.dim) || 1))));
     nightBtn.replaceChildren(icon(p.dark ? 'sun' : 'moon', 22), h('span', p.dark ? '日间' : '夜间'));
   }
   function toggleNight() {
@@ -205,6 +225,8 @@ ${settings.para > 0 ? `p{margin-block:0 ${settings.para}px!important}` : ''}
 a{color:${p.accent}!important;text-decoration:none!important}
 ${custom ? `body *{color:inherit!important;background-color:transparent!important;border-color:currentColor!important}body a{color:${p.accent}!important}` : ''}
 ${font.css ? `body,body *{font-family:${font.css}!important}` : ''}
+body{letter-spacing:${(+settings.letterSpacing || 0).toFixed(3)}em!important;word-spacing:${(+settings.wordSpacing || 0).toFixed(3)}em!important}
+${settings.bold ? 'body,body p,body span,body div,body li,body a,body em,body i{font-weight:600!important}body b,body strong,body h1,body h2,body h3,body h4{font-weight:800!important}' : ''}
 ${hl}
 ::highlight(shl-note){${noteCss}}
 ::highlight(shl-sel){background-color:color-mix(in srgb,${p.accent} 26%,transparent)}
@@ -810,6 +832,7 @@ ${hl}
     if (panel === toc) tocList.querySelector('.is-current')?.scrollIntoView({ block: 'center' });
   }
   function closePanels() {
+    custom = null;
     toc.hidden = true; sheet.hidden = true; scrim.hidden = true; searchPanel.hidden = true;
     if (!aiPanel.hidden) { aiPanel.hidden = true; aiAbort?.abort(); }
   }
@@ -1535,7 +1558,7 @@ ${hl}
   // ---------- 设置面板（排版 / 操作 / 书签 / 标记） ----------
   let tab = 'type', relayoutQueued = false, adjustTimer = null;
   function openSheet(which) { tab = which; drawSheet(); openPanel(sheet); }
-  const LAYOUT_KEYS = ['fontSize', 'lineHeight', 'marginPx', 'para', 'font', 'writing', 'flow', 'spread'];
+  const LAYOUT_KEYS = ['fontSize', 'lineHeight', 'marginPx', 'para', 'font', 'writing', 'flow', 'spread', 'bold', 'letterSpacing', 'wordSpacing'];
   function change(patch, redraw = true) {
     const before = { ...settings };
     Object.assign(settings, patch);
@@ -1563,6 +1586,68 @@ ${hl}
     if (on) frame.classList.add('is-adjusting');
     else adjustTimer = setTimeout(() => frame.classList.remove('is-adjusting'), 60);
   }
+  const themeBase = (k) => (THEMES[k] || THEMES.original).base;
+  /** 选主题：主题本身的样子加上你在“自定义”里对它的修改 */
+  function pickTheme(k) {
+    const look = { ...themeBase(k), ...(settings.themeMods?.[k] || {}) };
+    change({ theme: k, ...look });
+  }
+  /** 自定义主题：上面是实时预览，下面是文本 / 背景 / 布局，改动记到当前主题上 */
+  function drawCustom(range, seg) {
+    const base = themeBase(settings.theme);
+    const preview = h('div.tc-preview', {
+      style: `--bg:${paper().bg};--fg:${paper().fg};--ff:${(FONTS[settings.font] || FONTS.hei).css || FONTS.ming.css};--fw:${settings.bold ? 600 : 400};--fs:${Math.round(settings.fontSize * 0.95)}px;--lh:${settings.lineHeight};--ls:${settings.letterSpacing}em;--ws:${settings.wordSpacing}em;--pad:${Math.round(settings.marginPx * 0.8)}px`,
+    }, h('span.tc-aa', h('b', '大'), h('small', '小')), h('p.tc-text', previewText()));
+    const row = (label, ...ctl) => h('div.tc-row', h('span', label), ...ctl);
+    const sw = (label, key) => h('button.tc-switch' + (settings[key] ? '.is-on' : ''), { type: 'button', role: 'switch', 'aria-checked': String(!!settings[key]), 'aria-label': label, onclick: () => saveMod({ [key]: !settings[key] }) }, h('i'));
+    const fontList = h('div.tc-fonts', Object.entries(FONTS).map(([k, f]) => h('button' + (settings.font === k ? '.is-on' : ''), {
+      type: 'button', style: f.css ? `font-family:${f.css}` : '', 'aria-pressed': String(settings.font === k), onclick: () => saveMod({ font: k }),
+    }, f.name, settings.font === k ? icon('check', 16) : '')));
+    const slide = (label, key, min, max, stepV, fmt, ic) => {
+      const r = range(label, key, min, max, stepV, fmt);
+      r.querySelector('input').addEventListener('input', (e) => saveMod({ [key]: Number(e.target.value) }, false));
+      r.prepend(h('span.tc-ic', icon(ic, 18)));
+      return r;
+    };
+    const mods = Object.keys(settings.themeMods?.[settings.theme] || {}).length;
+    sheet.replaceChildren(
+      h('div.tc-head',
+        h('button.icon-btn.tc-x', { type: 'button', 'aria-label': '放弃修改', onclick: () => { const back = custom; custom = null; change(Object.fromEntries([...THEME_KEYS, 'fontSize', 'themeMods', 'spread'].map((k) => [k, back[k]]))); } }, icon('close')),
+        h('h2', `自定义主题 · ${(THEMES[settings.theme] || THEMES.original).name}`),
+        h('button.icon-btn.tc-ok', { type: 'button', 'aria-label': '完成', onclick: () => { custom = null; drawSheet(); } }, icon('check'))),
+      preview,
+      h('div.tc-body',
+        h('h3', '文本'),
+        h('div.tc-group', h('div.tc-sub', '字体'), fontList, row('粗体文本', sw('粗体文本', 'bold'))),
+        h('h3', '背景'),
+        h('div.tc-group', h('div.chips', [['auto', { name: '跟随外观', bg: 'linear-gradient(135deg,#FBFAF5 0 50%,#15171C 50% 100%)' }], ...Object.entries(PAPERS)].map(([k, pp]) => h('button.chip' + (settings.paper === k ? '.is-on' : ''), {
+          type: 'button', 'aria-pressed': String(settings.paper === k), onclick: () => saveMod({ paper: k }),
+        }, h('span.chip-dot', { style: `background:${pp.bg}` }), pp.name))), row('纸质书效果', sw('纸质书效果', 'book'))),
+        h('h3', '布局'),
+        h('div.tc-group',
+          slide('行间距', 'lineHeight', 1.2, 2.6, 0.01, (v) => v.toFixed(2), 'lineSpacing'),
+          slide('字符间距', 'letterSpacing', 0, 0.2, 0.005, (v) => `${Math.round(v * 100)}%`, 'letterSpacing'),
+          slide('词间距', 'wordSpacing', 0, 0.5, 0.01, (v) => `${Math.round(v * 100)}%`, 'wordSpacing'),
+          slide('页边空白', 'marginPx', 6, 60, 1, (v) => `${v}`, 'margin'),
+          slide('段落间距', 'para', 0, 32, 1, (v) => (v ? `${v}` : '原书'), 'paragraph'),
+          !isVertical() && !isScroll() && row('分栏', h('div.segmented', { role: 'group', 'aria-label': '分栏' }, [[true, '宽屏双栏'], [false, '单栏']].map(([v, t]) => h('button' + (settings.spread === v ? '.is-on' : ''), { type: 'button', onclick: () => change({ spread: v }) }, t))))),
+        mods ? h('button.btn.is-soft.is-block.tc-reset', { type: 'button', onclick: () => {
+          const all = { ...(settings.themeMods || {}) }; delete all[settings.theme];
+          change({ themeMods: all, ...base });
+        } }, `把“${(THEMES[settings.theme] || THEMES.original).name}”恢复成默认`) : ''));
+  }
+  /** 自定义时的改动：既改当前设置，也记到当前主题的修改里 */
+  function saveMod(patch, redraw = true) {
+    const theme = settings.theme || 'original';
+    const base = themeBase(theme);
+    const mine = { ...(settings.themeMods?.[theme] || {}) };
+    for (const [k, v] of Object.entries(patch)) { if (!THEME_KEYS.includes(k)) continue; if (base[k] === v) delete mine[k]; else mine[k] = v; }
+    change({ ...patch, themeMods: { ...(settings.themeMods || {}), [theme]: mine } }, redraw);
+  }
+  function previewText() {
+    const t = (frameDoc()?.body?.innerText || '').replace(/\s+/g, '');
+    return t.slice(Math.max(0, Math.floor(t.length * (page / Math.max(1, pages)))), Math.floor(t.length * (page / Math.max(1, pages))) + 90) || '我也不懂。大概是因为思考了太多困难的事情，所以绕不出来了。不然，把情况简化得单纯一点，只叙述事实就好。';
+  }
   function drawSheet() {
     const seg = (label, key, options, hint) => h('div.sheet-row', h('span.sheet-label', label, hint && h('small', hint)),
       h('div.segmented', { role: 'group', 'aria-label': label }, options.map(([value, text]) => h('button' + (settings[key] === value ? '.is-on' : ''), {
@@ -1579,17 +1664,37 @@ ${hl}
       return h('div.range-row', h('div.range-head', h('span.sheet-label', label), value), input);
     };
     let body;
+    sheet.classList.toggle('is-wide', tab === 'type');
+    sheet.classList.toggle('is-tall', tab === 'type' && !!custom);
+    if (tab === 'type' && custom) return drawCustom(range, seg);
     if (tab === 'type') {
+      const step = (d) => change({ fontSize: Math.min(34, Math.max(12, settings.fontSize + d)) });
+      const isAuto = settings.paper === 'auto';
+      const dimInput = h('input.reader-slider.is-bright', { type: 'range', min: 0.35, max: 1, step: 0.01, value: settings.dim ?? 1, 'aria-label': '亮度' });
+      const fillDim = () => dimInput.style.setProperty('--v', `${((dimInput.value - 0.35) / 0.65) * 100}%`);
+      fillDim();
+      dimInput.addEventListener('input', () => { fillDim(); change({ dim: Number(dimInput.value) }, false); });
       body = [
-        h('div.sheet-block', h('span.sheet-label', '阅读配色'),
-          h('div.chips', [['auto', { name: '跟随外观', bg: 'linear-gradient(135deg,#FBFAF5 0 50%,#15171C 50% 100%)' }], ...Object.entries(PAPERS)].map(([k, p]) => h('button.chip' + (settings.paper === k ? '.is-on' : ''), {
-            type: 'button', 'aria-pressed': String(settings.paper === k), onclick: () => change({ paper: k }),
-          }, h('span.chip-dot', { style: `background:${p.bg}` }), p.name)))),
-        range('字体大小', 'fontSize', 12, 34, 1, (v) => `${v} px`),
-        range('行距', 'lineHeight', 1.2, 2.6, 0.05, (v) => `${v.toFixed(2)} 倍`),
-        range('页边距', 'marginPx', 6, 60, 1, (v) => `${v} px`),
-        range('段落间距', 'para', 0, 32, 1, (v) => (v ? `${v} px` : '跟随原书')),
-        seg('字体', 'font', Object.entries(FONTS).map(([k, f]) => [k, f.name])),
+        h('div.ts-top',
+          h('div.ts-size', { role: 'group', 'aria-label': `字号 ${settings.fontSize}` },
+            h('button', { type: 'button', 'aria-label': '字小一点', disabled: settings.fontSize <= 12, onclick: () => step(-1) }, h('span.ts-small', '小')),
+            h('span.ts-size-sep', { 'aria-hidden': 'true' }),
+            h('button', { type: 'button', 'aria-label': '字大一点', disabled: settings.fontSize >= 34, onclick: () => step(1) }, h('span.ts-big', '大'))),
+          h('div.ts-toggles',
+            h('button' + (settings.book ? '.is-on' : ''), { type: 'button', 'aria-pressed': String(!!settings.book), title: '纸质书效果：纸纹、书缝、书边', 'aria-label': '纸质书效果', onclick: () => change({ book: !settings.book }) }, icon('books', 20)),
+            h('button' + (isAuto ? '.is-on' : ''), { type: 'button', 'aria-pressed': String(isAuto), title: '颜色跟随系统的浅色 / 深色', 'aria-label': '跟随外观', onclick: () => change(isAuto ? { paper: themeBase(settings.theme).paper === 'auto' ? 'white' : themeBase(settings.theme).paper } : { paper: 'auto' }) }, icon('contrast', 20)))),
+        h('div.ts-bright', icon('sun', 16), dimInput, icon('sun', 22)),
+        h('div.ts-themes', { role: 'radiogroup', 'aria-label': '主题' }, Object.entries(THEMES).map(([k, t]) => {
+          const look = { ...t.base, ...(settings.themeMods?.[k] || {}) };
+          const pp = look.paper === 'auto' ? (document.documentElement.dataset.theme === 'dark' ? PAPERS.night : PAPERS.white) : PAPERS[look.paper] || PAPERS.white;
+          const edited = Object.keys(settings.themeMods?.[k] || {}).length > 0;
+          return h('button.ts-card' + (settings.theme === k ? '.is-on' : '') + (pp.dark ? '.is-dark' : ''), {
+            type: 'button', role: 'radio', 'aria-checked': String(settings.theme === k), 'aria-label': `${t.name}${edited ? '（改过）' : ''}`,
+            style: `--bg:${pp.bg};--fg:${pp.fg};--ff:${(FONTS[look.font] || FONTS.hei).css || FONTS.ming.css};--fw:${look.bold ? 700 : 400}`,
+            onclick: () => pickTheme(k),
+          }, h('span.ts-sample', h('b', '大'), h('small', '小')), h('span.ts-name', t.name), edited ? h('i.ts-edited', { 'aria-hidden': 'true' }, '*') : '');
+        })),
+        h('button.ts-custom', { type: 'button', onclick: () => { custom = { ...settings }; drawSheet(); } }, icon('gear', 18), '自定义'),
       ];
     } else if (tab === 'act') {
       body = [
@@ -1628,9 +1733,9 @@ ${hl}
         markList(['highlight', 'note']),
       ];
     }
-    const tabs = [['type', '排版'], ['act', '操作'], ['marks', '书签'], ['notes', '标记']];
+    const tabs = [['type', '主题'], ['act', '操作'], ['marks', '书签'], ['notes', '标记']];
     sheet.replaceChildren(
-      h('div.sheet-head', h('h2', '阅读设置'),
+      h('div.sheet-head', h('h2', tab === 'type' ? '主题与设置' : '阅读设置'),
         h('button.icon-btn', { type: 'button', 'aria-label': '关闭', onclick: closePanels }, icon('close'))),
       h('div.sheet-tabs', { role: 'tablist' }, tabs.map(([k, text]) => h('button' + (tab === k ? '.is-on' : ''), {
         type: 'button', role: 'tab', 'aria-selected': String(tab === k), onclick: () => { tab = k; drawSheet(); },

@@ -15,6 +15,7 @@ const crypto = require('node:crypto');
 const { Readable } = require('node:stream');
 const meta = require('./meta.js');
 const novelia = require('./novelia.js');
+const createMounts = require('./mounts.js');
 
 const PORT = Number(process.env.PORT || 8787);
 const HOST = process.env.HOST || '127.0.0.1';
@@ -23,7 +24,7 @@ const OPEN_SIGNUP = process.env.OPEN_SIGNUP === '1';
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const APP_DIR = path.resolve(process.env.APP_DIR || path.join(__dirname, '..', 'app'));
 const MAX_BOOK_BYTES = Number(process.env.MAX_BOOK_MB || 2048) * 1024 * 1024;
-const VERSION = '0.12.2';
+const VERSION = '0.13.0';
 // 百度网盘开放平台应用（也可以每个账号在设置里自己填）
 const BAIDU_APP_KEY = process.env.BAIDU_APP_KEY || '';
 const BAIDU_SECRET_KEY = process.env.BAIDU_SECRET_KEY || '';
@@ -450,6 +451,8 @@ async function baiduStream(req, res, lib, fsid, name, cacheable = false) {
 const mimeByName = (n = '') => ({ jpg: 'image/jpeg', jpeg: 'image/jpeg', png: 'image/png', webp: 'image/webp', gif: 'image/gif', avif: 'image/avif', bmp: 'image/bmp', epub: 'application/epub+zip' })[String(n).split('.').pop().toLowerCase()] || 'application/octet-stream';
 const IMAGE_RE = /\.(jpe?g|png|webp|gif|avif|bmp)$/i;
 const naturalCmp = (a, b) => a.localeCompare(b, undefined, { numeric: true, sensitivity: 'base' });
+// WebDAV / OPDS / 服务器文件夹（见 mounts.js）
+const mounts = createMounts({ json, fail, readJson, save: () => save(), str, newId, volumeOf, mimeByName, sendFile, IMAGE_RE, naturalCmp });
 
 async function baiduList(lib, dir) {
   const token = await baiduToken(lib);
@@ -631,6 +634,7 @@ async function api(req, res, url) {
     return json(res, 200, { ...rest, user: publicUser(user), serverTime: Date.now() });
   }
   if (seg[0] === 'cloud' && seg[1] === 'baidu') return baiduApi(req, res, seg.slice(2), q, lib);
+  if (seg[0] === 'mounts') return mounts.api(req, res, seg.slice(1), q, lib);
   if (seg[0] === 'novelia') return novelia.handle(req, res, seg.slice(1), q, lib, { json, fail, readJson, save, str });
   if (seg[0] === 'ai' && M === 'POST') return aiProxy(req, res);
   if (seg[0] === 'meta' && seg[1] === 'lookup' && M === 'POST') { // 自动查作品资料
@@ -660,6 +664,7 @@ async function api(req, res, url) {
       await fsp.rm(coverFile(book.id), { force: true });
       return json(res, 200, { ok: true });
     }
+    if ((book.source?.type === 'mount' || book.source?.type === 'mount-dir') && mounts.bookRoute(req, res, seg, lib, book)) return;
     if (book.source?.type === 'baidu' && seg[2] === 'file' && (M === 'GET' || M === 'HEAD')) return baiduStream(req, res, lib, book.source.fsid, book.fileName);
     if (book.source?.type === 'baidu-dir' && seg[2] === 'pages' && M === 'GET') {
       return json(res, 200, { pages: (lib.cloudPages[book.id] || []).map((p) => ({ name: p.name, size: p.size })) });

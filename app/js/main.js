@@ -9,6 +9,7 @@ import { labelOf, labelById, matchLabel, searchLabels, logoUrl } from './labels.
 import { buildSpine, fitSpine } from './spine.js';
 import { mountWinbar } from './winbar.js';
 import { renderOnline } from './online.js';
+import { importMenuSections, refreshMounts, mountsCard } from './mounts.js';
 
 // 0.6 起立体书架是默认的书架视图（旧的“书脊”视图并入了它）
 if (prefs.get('layout') === 'spine' || !prefs.get('layoutV')) { prefs.set('layout', 'shelf'); prefs.set('layoutV', 1); }
@@ -307,8 +308,7 @@ function moreMenu(anchor) {
     { items: [
       { icon: 'checkCircle', label: view.selecting ? '完成选择' : '选择多本', onclick: () => (view.selecting ? exitSelect() : enterSelect()) },
       ...(store.isConfigured() ? [{ icon: 'sync', label: '立即同步', onclick: manualSync }] : []),
-      { icon: 'upload', label: '从这台设备导入', sub: 'EPUB、CBZ / ZIP', onclick: () => els.fileInput.click() },
-      { icon: 'cloud', label: '从百度网盘添加', onclick: () => openBaiduBrowser() },
+      { icon: 'upload', label: '导入', sub: '本机文件、WebDAV、OPDS、网盘', onclick: () => importMenu(els.moreBtn) },
     ] },
   ]);
 }
@@ -1541,8 +1541,8 @@ const row = (label, control, hint) => h('div.set-row', h('div.set-label', h('spa
 
 function renderSettings() {
   els.body.className = 'body settings';
-  const tabs = [['account', 'user', '账号'], ['look', 'palette', '外观'], ['ai', 'sparkle', '阅读助手'], ['tts', 'headphones', '听书'], ['cloud', 'cloud', '网盘'], ['data', 'database', '存储与同步']];
-  const content = { account: settingsAccount, look: settingsLook, ai: settingsAi, tts: settingsTts, cloud: settingsCloud, data: settingsData }[view.settingsTab]();
+  const tabs = [['account', 'user', '账号'], ['look', 'palette', '外观'], ['ai', 'sparkle', '阅读助手'], ['tts', 'headphones', '听书'], ['cloud', 'cloud', '网盘与挂载'], ['data', 'database', '存储与同步']];
+  const content = { account: settingsAccount, look: settingsLook, ai: settingsAi, tts: settingsTts, cloud: () => [settingsCloud(), mountsCard({ importFiles, rerender: () => renderBody() })], data: settingsData }[view.settingsTab]();
   els.body.replaceChildren(
     h('nav.set-tabs', { role: 'tablist' }, tabs.map(([k, ic, t]) => h('button' + (view.settingsTab === k ? '.is-on' : ''), {
       type: 'button', role: 'tab', 'aria-selected': String(view.settingsTab === k), onclick: () => { view.settingsTab = k; renderBody(); },
@@ -1843,10 +1843,11 @@ function popMenu(anchor, sections) {
   setTimeout(() => { document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', esc, true); });
   menu.querySelector('button')?.focus();
 }
-function importMenu(anchor) {
+async function importMenu(anchor) {
+  await Promise.race([refreshMounts(), new Promise((r) => setTimeout(r, 400))]); // 列出已有的挂载；网络慢就先用上次的
   popMenu(anchor, [
     { items: [{ icon: 'upload', label: '从这台设备选文件', sub: 'EPUB、CBZ / ZIP', onclick: () => els.fileInput.click() }] },
-    { title: '网盘', items: [{ icon: 'cloud', label: '百度网盘', sub: '文件留在网盘里，看的时候按需读取', onclick: () => openBaiduBrowser() }] },
+    ...importMenuSections({ openBaidu: () => openBaiduBrowser(), onChanged: () => renderBody(), importFiles }),
   ]);
 }
 

@@ -611,6 +611,8 @@ function remoteOf(book) {
   return src;
 }
 
+/** 图片文件夹（百度网盘或挂载）：一页一张图 */
+export const isPageDir = (book) => book?.source?.type === 'baidu-dir' || book?.source?.type === 'mount-dir';
 /** 网盘里的图片文件夹：一页一张图，按页向服务器要 */
 class PageListSource {
   constructor(book) { this.book = book; this.isPageList = true; this.entries = []; }
@@ -636,7 +638,7 @@ export async function bookSource(book) {
   const cached = await local.get('files', book.id).catch(() => null);
   if (cached) { if (book.source) direct.setRoute(book.id, 'local'); return { source: cached, release() {} }; }
   if (!account()) throw new Error('这本书的文件不在这台设备上');
-  if (book.source?.type === 'baidu-dir') return { source: await new PageListSource(book).load(), release() {} };
+  if (isPageDir(book)) return { source: await new PageListSource(book).load(), release() {} };
   const src = remoteOf(book);
   // 网盘里的漫画往往很大，默认只取正在看的那几页，不在后台把整本拉下来
   if (prefs.get('autoCache', true) && !book.source) src.fill().catch(() => {});
@@ -646,7 +648,7 @@ export async function bookSource(book) {
 /** 把整本书下载到本机（离线阅读用） */
 export async function downloadBook(book, onProgress) {
   if (state.downloaded.has(book.id)) return;
-  if (book.source?.type === 'baidu-dir') throw new ApiError('网盘里的图片文件夹只能在线看，不能下载到本机', 0);
+  if (isPageDir(book)) throw new ApiError('网盘 / 挂载里的图片文件夹只能在线看，不能下载到本机', 0);
   const src = remoteOf(book);
   const watch = (p) => onProgress?.(p);
   src.watchers.add(watch);
@@ -807,6 +809,30 @@ export async function diagnoseDirect(book, rounds = 12) {
   };
   return direct.diagnose(book, { rounds, proxyRead });
 }
+// ---------- 挂载：WebDAV / OPDS / 服务器文件夹 ----------
+export const mounts = {
+  list: () => apiJson('/api/mounts'),
+  create: (body) => apiJson('/api/mounts', 'POST', body),
+  update: (id, body) => apiJson('/api/mounts/' + id, 'PUT', body),
+  remove: (id) => apiJson('/api/mounts/' + id, 'DELETE'),
+  browse: (id, path) => apiJson(`/api/mounts/${id}/list?` + new URLSearchParams({ path: path || '' })),
+  /** OPDS 封面：要带登录令牌，所以先取回来再变成本地地址 */
+  async coverUrl(id, path) {
+    const res = await api(`/api/mounts/${id}/fetch?` + new URLSearchParams({ path, name: 'cover.jpg' }));
+    return URL.createObjectURL(await res.blob());
+  },
+  /** 整个文件取回来（OPDS 用），变成 File 再按普通文件导入 */
+  async fetchFile(id, path, name) {
+    const res = await api(`/api/mounts/${id}/fetch?` + new URLSearchParams({ path, name }));
+    return new File([await res.blob()], name, { type: /\.epub$/i.test(name) ? 'application/epub+zip' : 'application/zip' });
+  },
+};
+/** 把挂载里的文件 / 图片文件夹放上书架：书架上只记位置，然后读出封面和书名 */
+export async function addFromMount(mountId, items, collectionIds = [], onStep) {
+  const { added } = await apiJson(`/api/mounts/${mountId}/add`, 'POST', { items, collections: collectionIds });
+  return finishAdded(added, onStep);
+}
+
 export const baidu = {
   status: () => apiJson('/api/cloud/baidu'),
   setApp: (appKey, secretKey) => apiJson('/api/cloud/baidu/app', 'PUT', { appKey, secretKey }),
@@ -818,6 +844,9 @@ export const baidu = {
 /** 把网盘里的文件 / 图片文件夹放上书架：书架上只记位置，文件留在网盘里；然后从网盘里读出封面和书名 */
 export async function addFromBaidu(items, collectionIds = [], onStep) {
   const { added } = await apiJson('/api/cloud/baidu/add', 'POST', { items, collections: collectionIds });
+  return finishAdded(added, onStep);
+}
+async function finishAdded(added, onStep) {
   for (const { book } of added) state.books[book.id] = book;
   persist(); emit();
   let i = 0;
@@ -830,7 +859,7 @@ export async function addFromBaidu(items, collectionIds = [], onStep) {
 }
 async function finishCloudBook(book) {
   let info;
-  if (book.source?.type === 'baidu-dir') {
+  if (isPageDir(book)) {
     const src = await new PageListSource(book).load();
     info = { cover: await src.blobOf(src.entries[0]), ...(book.series ? {} : guessSeries(book.title)) };
   } else {

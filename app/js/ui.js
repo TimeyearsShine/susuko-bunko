@@ -20,6 +20,12 @@ export function h(spec, props, ...children) {
 }
 
 const paths = {
+  contrast: '<circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor"/>',
+  lineSpacing: '<path d="M10 6h10M10 12h10M10 18h10M5 4v16M3 6.5L5 4l2 2.5M3 17.5L5 20l2-2.5"/>',
+  letterSpacing: '<path d="M6 13l2.5-7 2.5 7M6.8 11h3.4M14 13V6h2.2a1.8 1.8 0 0 1 0 3.6H14M14 9.6h2.6a1.7 1.7 0 0 1 0 3.4H14M4 18h16M4 18l2-1.6M4 18l2 1.6M20 18l-2-1.6M20 18l-2 1.6"/>',
+  wordSpacing: '<path d="M4 6h6M14 6h6M4 11h4M12 11h8M4 16h8M16 16h4"/>',
+  margin: '<rect x="4" y="4" width="16" height="16" rx="2"/><rect x="8" y="8" width="8" height="8" rx="1" fill="currentColor" fill-opacity=".25"/>',
+  paragraph: '<path d="M4 6h16M4 10h11M4 15h16M4 19h11"/>',
   menu: '<path d="M4 7h16M4 12h16M4 17h16"/>',
   globe: '<circle cx="12" cy="12" r="8.5"/><path d="M3.5 12h17M12 3.5c2.4 2.3 3.6 5.1 3.6 8.5s-1.2 6.2-3.6 8.5c-2.4-2.3-3.6-5.1-3.6-8.5s1.2-6.2 3.6-8.5z"/>',
   sidebar: '<rect x="3.5" y="4.5" width="17" height="15" rx="3"/><path d="M9.5 4.5v15"/>',
