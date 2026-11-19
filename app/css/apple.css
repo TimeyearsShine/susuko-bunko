@@ -324,3 +324,9 @@
   :root[data-apple-interface] .topbar { background: var(--apple-canvas); -webkit-backdrop-filter: none; backdrop-filter: none; }
   :root[data-apple-interface] :is(.reader-top, .reader-bottom) { background: var(--paper); }
 }
+
+/* 0.13：阅读器“自定义主题”页更高，主题页更宽 */
+:root[data-apple-interface] .reader-sheet.is-tall {
+  max-height: min(860px, calc(100% - 24px - var(--apple-visible-top) - var(--apple-visible-bottom)));
+}
+:root[data-apple-interface] :is(.ts-size button, .ts-toggles button, .ts-custom, .tc-fonts button) { min-height: var(--apple-touch); }
