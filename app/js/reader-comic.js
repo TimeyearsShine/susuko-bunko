@@ -1,10 +1,11 @@
 // 漫画阅读器：CBZ / ZIP。翻页（可日漫右翻、宽屏双页）或下拉长条。
 import { routeChip } from './cloud-direct.js';
 import { ZipReader, mimeOf, isImageName } from './zip.js';
-import { prefs, setProgress, natural } from './store.js';
+import { prefs, setProgress, natural, account } from './store.js';
+import { createW2x, w2xSupported, W2X_MODES, W2X_AHEAD } from './waifu2x.js';
 import { h, icon, loader, toast, menuButton, statusClock } from './ui.js';
 
-const DEFAULTS = { mode: 'page', rtl: true, spread: true, turn: 'slide', zoom: true, pageNum: true, applyAll: true };
+const DEFAULTS = { mode: 'page', rtl: true, spread: true, turn: 'slide', zoom: true, pageNum: true, applyAll: true, w2x: 'off' };
 
 export async function open({ host, book, title = book.title, source, progress, onExit }) {
   // 网盘里的图片文件夹本身就是一页一张图；压缩包则从里面挑出图片
@@ -27,10 +28,43 @@ export async function open({ host, book, title = book.title, source, progress, o
     if (!urls.has(i)) urls.set(i, zip.blobOf(entries[i], mimeOf(entries[i].name)).then((b) => URL.createObjectURL(b)));
     return urls.get(i);
   }
+  // 画质增强好了的页优先用增强后的图
+  const srcOf = (i) => { const u = w2x?.url(i); return u ? Promise.resolve(u) : urlOf(i); };
   function evict(keepAround, radius) {
     for (const [i, p] of urls) {
       if (Math.abs(i - keepAround) > radius) { urls.delete(i); p.then((u) => URL.revokeObjectURL(u)).catch(() => {}); }
     }
+  }
+
+  // ---------- 画质增强（waifu2x） ----------
+  let w2x = null, w2xStatus = null;
+  const w2xNote = h('small.w2x-note');
+  function w2xText(st) {
+    if (!st) return '';
+    if (st.error) return `没能启动：${st.error}`;
+    const be = st.backend === 'webgpu' ? '显卡（WebGPU）' : st.backend === 'wasm' ? 'CPU（较慢）' : '';
+    const run = st.running != null ? `正在处理第 ${st.running + 1} 页` : st.queued ? '' : '后面几页都处理好了';
+    return [be, run, st.queued ? `还有 ${st.queued} 页排队` : '', st.lastMs ? `上一页用时 ${(st.lastMs / 1000).toFixed(1)} 秒` : ''].filter(Boolean).join('，');
+  }
+  function startW2x() {
+    w2x?.destroy(); w2x = null; w2xStatus = null;
+    const conf = account();
+    if (settings.w2x === 'off' || !W2X_MODES[settings.w2x] || !conf?.url || !w2xSupported()) { w2xNote.textContent = ''; return; }
+    w2x = createW2x({
+      server: conf.url, mode: settings.w2x,
+      getBlob: (i) => zip.blobOf(entries[i], mimeOf(entries[i].name)),
+      onStatus: (st) => {
+        w2xStatus = st; w2xNote.textContent = w2xText(st);
+        if (st.error && !startW2x.warned) { startW2x.warned = true; toast('画质增强没能启动：' + st.error, { error: true }); }
+      },
+      onDone: (i, url) => { // 正在看的页处理好了，直接换上去
+        for (const img of stage.querySelectorAll(`img[data-i="${i}"]`)) {
+          const next = new Image(); next.src = url;
+          next.decode().then(() => { if (img.isConnected) { img.src = url; img.classList.add('is-w2x'); } }).catch(() => {});
+        }
+      },
+    });
+    w2x.focus(page, total);
   }
 
   // ---------- 结构 ----------
@@ -107,9 +141,9 @@ export async function open({ host, book, title = book.title, source, progress, o
     async function fillPanel(panel, p) {
       const g = group(p);
       panel.dataset.page = String(g[0]);
-      const srcs = await Promise.all(g.map(urlOf)).catch(() => null);
+      const srcs = await Promise.all(g.map(srcOf)).catch(() => null);
       if (!srcs || panel.dataset.page !== String(g[0])) return false;
-      const imgs = srcs.map((src, n) => h('img', { src, alt: `第 ${g[n] + 1} 页`, draggable: false }));
+      const imgs = srcs.map((src, n) => h('img' + (w2x?.url(g[n]) === src ? '.is-w2x' : ''), { src, alt: `第 ${g[n] + 1} 页`, draggable: false, 'data-i': g[n] }));
       await Promise.all(imgs.map((im) => im.decode().catch(() => {}))); // 先在后台解码，滑过来时不会顿
       if (panel.dataset.page !== String(g[0])) return false;
       panel.classList.toggle('is-rtl', settings.rtl);
@@ -129,6 +163,7 @@ export async function open({ host, book, title = book.title, source, progress, o
       page = g[0];
       for (let i = g[g.length - 1] + 1; i <= Math.min(total - 1, g[g.length - 1] + AHEAD); i++) urlOf(i); // 先把后面几页排上队
       report(g[g.length - 1], saveNow);
+      w2x?.focus(page, total);
       if (cur.dataset.page !== String(page) || !cur.childElementCount) {
         // 这一页还没取到时，过一小会儿显示“正在加载”，不让画面看起来卡住
         const wait = setTimeout(() => { if (t === token) { cur.classList.add('is-loading'); spinner.hidden = false; } }, 150);
@@ -290,9 +325,9 @@ export async function open({ host, book, title = book.title, source, progress, o
       for (const entry of list) {
         const el = entry.target, i = Number(el.dataset.i);
         if (entry.isIntersecting && !el.firstChild) {
-          urlOf(i).then((src) => {
+          srcOf(i).then((src) => {
             if (destroyed || el.firstChild) return;
-            const img = h('img', { src, alt: `第 ${i + 1} 页`, draggable: false });
+            const img = h('img' + (w2x?.url(i) === src ? '.is-w2x' : ''), { src, alt: `第 ${i + 1} 页`, draggable: false, 'data-i': i });
             img.addEventListener('load', () => { el.style.aspectRatio = `${img.naturalWidth} / ${img.naturalHeight}`; }, { once: true });
             el.append(img);
           }).catch(() => {});
@@ -313,7 +348,7 @@ export async function open({ host, book, title = book.title, source, progress, o
       const atEnd = scroller.scrollTop + scroller.clientHeight >= scroller.scrollHeight - 4;
       const now = atEnd ? total - 1 : lo;
       if (now !== page) {
-        page = now; report(page);
+        page = now; report(page); w2x?.focus(page, total);
         for (const [i] of urls) { // 离得远的页释放内存，保留占位高度
           if (Math.abs(i - page) > 8 && items[i].firstChild) items[i].replaceChildren();
         }
@@ -328,7 +363,7 @@ export async function open({ host, book, title = book.title, source, progress, o
     });
 
     const jump = (p) => { items[p].scrollIntoView({ block: 'start' }); };
-    requestAnimationFrame(() => { if (page > 0) jump(page); report(page, save); });
+    requestAnimationFrame(() => { if (page > 0) jump(page); report(page, save); w2x?.focus(page, total); });
     const step = (dir) => scroller.scrollBy({ top: dir * scroller.clientHeight * 0.85, behavior: 'smooth' });
     const onKey = (key) => {
       if ([' ', 'PageDown', 'ArrowDown', 'ArrowRight'].includes(key)) step(1);
@@ -369,8 +404,9 @@ export async function open({ host, book, title = book.title, source, progress, o
     if (applyAll) { prefs.set('comic', rest); delete books[book.id]; }
     else books[book.id] = { mode: rest.mode, rtl: rest.rtl }; // 只对这本：只记阅读方式，其他设置仍然全局
     prefs.set('comicBooks', books);
-    if (!applyAll) prefs.set('comic', { ...prefs.get('comic', {}), turn: rest.turn, zoom: rest.zoom, pageNum: rest.pageNum, spread: rest.spread });
+    if (!applyAll) prefs.set('comic', { ...prefs.get('comic', {}), turn: rest.turn, zoom: rest.zoom, pageNum: rest.pageNum, spread: rest.spread, w2x: rest.w2x });
     root.classList.toggle('no-pagenum', !settings.pageNum);
+    if ('w2x' in patch) { startW2x.warned = false; startW2x(); drawSheet(); return; }
     if ('turn' in patch || 'zoom' in patch || 'pageNum' in patch || 'applyAll' in patch) { drawSheet(); return; }
     mount(); drawSheet(); drawModeBtn();
   }
@@ -398,6 +434,16 @@ export async function open({ host, book, title = book.title, source, progress, o
         toggleRow('允许双击放大画面', 'zoom', '放大后拖动查看细节，再双击还原'));
     }
     rows.push(toggleRow('显示页码', 'pageNum'));
+    const canW2x = w2xSupported() && !!account()?.url;
+    rows.push(h('div.sheet-row.is-w2x', h('span.sheet-label', '画质增强', h('small', canW2x
+      ? `waifu2x 降噪，后台先处理后面 ${W2X_AHEAD} 页，好了自动换上。第一次使用要下载几十 MB 模型`
+      : (w2xSupported() ? '要先登录自己的服务器（模型从服务器下载）' : '这个设备不支持'))),
+      h('div.segmented', { role: 'group', 'aria-label': '画质增强' },
+        [['off', '关'], ...Object.entries(W2X_MODES).map(([k, m]) => [k, m.label])].map(([value, text]) => h('button' + (settings.w2x === value ? '.is-on' : ''), {
+          type: 'button', disabled: !canW2x && value !== 'off', title: W2X_MODES[value]?.sub || '',
+          onclick: () => change({ w2x: value }),
+        }, text)))));
+    if (w2x) { w2xNote.textContent = w2xText(w2xStatus); rows.push(h('div.sheet-row.w2x-status', w2xNote)); }
     sheet.replaceChildren(
       h('div.sheet-head', h('h2', '阅读设置'),
         h('button.icon-btn', { type: 'button', 'aria-label': '关闭', onclick: closePanels }, icon('close'))),
@@ -405,12 +451,13 @@ export async function open({ host, book, title = book.title, source, progress, o
   }
 
   root.classList.toggle('no-pagenum', !settings.pageNum);
+  startW2x();
   mount(false);
 
   return {
     async destroy() {
       destroyed = true;
-      cleanupView(); clock.stop();
+      cleanupView(); clock.stop(); w2x?.destroy();
       window.removeEventListener('keydown', onKey);
       window.removeEventListener('volumekey', onVolume);
       try { window.SusukoNative?.setVolumeKeys(false); } catch { /* 忽略 */ }

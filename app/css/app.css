@@ -743,21 +743,21 @@ body.is-dragging .drop-hint { display: grid; }
 .row-check.is-on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 /* ---------- 立体书架 ---------- */
-.main.is-shelf { display: flex; flex-direction: column; }
+.main.is-shelf { display: flex; flex-direction: column; padding-bottom: calc(18px + var(--safe-b)); } /* 立体书架自己会占满高度，不用给滚动内容留的那 110px */
 .main.is-shelf > .body { flex: 1; min-height: 0; }
 .body.shelf { display: flex; flex-direction: column; gap: 6px; min-height: 380px; }
 .shelf-host { flex: 1; min-height: 300px; margin: 0 -32px; display: flex; }
 .shelf3d {
-  --cw: 184px; --ch: 261px; --t: 37px; --persp: 1100px;
+  --cw: 184px; --ch: 261px; --t: 37px; --persp: 1100px; --sb: 40px;
   position: relative; flex: 1; min-height: 0; outline: none; cursor: grab; touch-action: pan-y;
   -webkit-user-select: none; user-select: none; overflow: hidden;
 }
 .shelf3d:active { cursor: grabbing; }
 .shelf3d:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); border-radius: 18px; }
 .shelf-scene { position: absolute; inset: 0; perspective: var(--persp); perspective-origin: 50% 35%; }
-.shelf-track { position: absolute; left: 50%; bottom: calc(40px + var(--ch) * .12); width: 0; height: 0; transform-style: preserve-3d; }
+.shelf-track { position: absolute; left: 50%; bottom: var(--sb); width: 0; height: 0; transform-style: preserve-3d; }
 .shelf-plank { /* 地面上一层很淡的环境阴影，主要的阴影由每本书自己的接触阴影负责 */
-  position: absolute; left: 22%; right: 22%; bottom: calc(30px + var(--ch) * .12); height: calc(var(--ch) * .06); border-radius: 50%;
+  position: absolute; left: 22%; right: 22%; bottom: calc(var(--sb) - var(--ch) * .03); height: calc(var(--ch) * .06); border-radius: 50%;
   background: radial-gradient(closest-side, color-mix(in srgb, var(--ink) 9%, transparent), transparent);
   filter: blur(10px); pointer-events: none;
 }
@@ -854,6 +854,7 @@ body.is-dragging .drop-hint { display: grid; }
   display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 3; overflow: hidden; max-width: 72em;
 }
 .cap-desc.is-empty { color: var(--muted); }
+.cap-desc { min-height: calc(1.75em * 3); } /* 简介长短不一时占位一致，书架高度就不会跟着跳 */
 body.has-pill .main.is-shelf .shelf-caption { padding-bottom: 96px; }
 
 /* ---------- 主题色 ---------- */
@@ -1738,3 +1739,12 @@ html.is-desk .shell.is-mini .side-top { margin-top: 40px; }
 .tc-ok { width: 40px; height: 40px; }
 .tc-x { width: 40px; height: 40px; }
 .reader-sheet .tc-ok, .reader-sheet .tc-ok:hover { color: var(--paper) !important; background: var(--paper-ink) !important; }
+
+/* ---------- 漫画画质增强（waifu2x） ---------- */
+.sheet-row.is-w2x { gap: 14px; }
+.sheet-row.is-w2x .sheet-label { flex: 1; min-width: 0; display: flex; flex-direction: column; gap: 2px; white-space: normal; }
+.sheet-row.is-w2x .segmented { flex: none; }
+.sheet-row.is-w2x .segmented button:disabled { opacity: .4; cursor: not-allowed; }
+.sheet-row.w2x-status { padding-top: 0; }
+.w2x-note { display: block; font-size: 12.5px; line-height: 1.5; color: color-mix(in srgb, var(--paper-ink, var(--ink)) 70%, transparent); }
+.w2x-note:empty { display: none; }

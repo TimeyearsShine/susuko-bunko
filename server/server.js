@@ -24,7 +24,7 @@ const OPEN_SIGNUP = process.env.OPEN_SIGNUP === '1';
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const APP_DIR = path.resolve(process.env.APP_DIR || path.join(__dirname, '..', 'app'));
 const MAX_BOOK_BYTES = Number(process.env.MAX_BOOK_MB || 2048) * 1024 * 1024;
-const VERSION = '0.13.1';
+const VERSION = '0.13.2';
 // 百度网盘开放平台应用（也可以每个账号在设置里自己填）
 const BAIDU_APP_KEY = process.env.BAIDU_APP_KEY || '';
 const BAIDU_SECRET_KEY = process.env.BAIDU_SECRET_KEY || '';
@@ -811,6 +811,8 @@ function serveStatic(req, res, url) {
   });
 }
 
+const waifu2x = require('./waifu2x').createWaifu2x({ dataDir: DATA_DIR, fail });
+
 http.createServer(async (req, res) => {
   cors(res);
   let url;
@@ -818,6 +820,7 @@ http.createServer(async (req, res) => {
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
   try {
     if (url.pathname.startsWith('/api/')) return await api(req, res, url);
+    if (url.pathname.startsWith('/w2x/') && (req.method === 'GET' || req.method === 'HEAD')) return await waifu2x.route(req, res, url);
     if (req.method !== 'GET' && req.method !== 'HEAD') return fail(res, 405, '不支持的方法');
     serveStatic(req, res, url);
   } catch (e) {
