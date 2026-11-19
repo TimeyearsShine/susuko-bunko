@@ -155,7 +155,8 @@ jobs:
           if-no-files-found: error
 
   macos:
-    runs-on: macos-15
+    # Icon Composer 图标（.icon）要在 macOS 26 上编译：macos-15 机器上 actool 会因为缺系统库崩溃
+    runs-on: macos-26
     timeout-minutes: 40
     steps:
       - uses: actions/checkout@v4
