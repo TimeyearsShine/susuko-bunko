@@ -94,6 +94,19 @@ rustup target add aarch64-apple-ios
 npx tauri ios build --no-sign          # 未签名 IPA
 ```
 
+## 2d. 发布新版本
+
+GitHub Actions 会自动打包四个平台。改好版本号（`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`server/server.js`）并在下面“升级服务端”里写一行 `**版本号**：更新说明`，然后推一个标签：
+
+```bash
+git tag v0.13.1
+git push origin v0.13.1
+```
+
+Windows、安卓、iOS、macOS 都打包成功后，会自动创建 GitHub Release，上传四个安装包，说明取自 README 里那一行。标签里带“-”（如 `v0.13.1-beta.1`）的标成预发布。只想试打包时，在 Actions → “打包客户端” → Run workflow，安装包在运行页面底部的 Artifacts 里，不会发布。
+
+iOS 是未签名 IPA（用 AltStore、SideStore 等自签安装）；macOS 只有临时签名、没有公证，第一次打开要右键 → 打开。要上架或免提示安装，需要 Apple 开发者账号的证书。
+
 ## 百度网盘（放大体积的漫画）
 
 漫画可以留在百度网盘里，书架上只记位置：看书时由你的服务器拿着授权去网盘取正在看的那几页转给客户端，不占服务器硬盘（但会走服务器的流量）。
