@@ -62,7 +62,10 @@ static char buttonID;
     button.refusesFirstResponder = YES;
     [button setAccessibilityElement:NO];
     NSGlassEffectView *glass = [NSGlassEffectView new];
+    // effectIsInteractive 只在 macOS 27 SDK 里有；GitHub 上的 Xcode 26 没有，编译时跳过这一行
+#if defined(__MAC_27_0) && __MAC_OS_X_VERSION_MAX_ALLOWED >= __MAC_27_0
     if (@available(macOS 27.0, *)) glass.effectIsInteractive = YES;
+#endif
     glass.contentView = button;
     control.surface = glass;
 #endif
