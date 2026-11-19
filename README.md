@@ -183,6 +183,8 @@ iOS 是未签名 IPA（用 AltStore、SideStore 等自签安装）；macOS 只�
 
 ## 升级服务端
 
+**0.13.1**：Release 同时提供 Windows、安卓、iOS（未签名 IPA）和 macOS（Apple 芯片）四个安装包，推版本标签后自动发布；Mac 版改在 macOS 26 上编译，修好了链接和新图标的编译问题；苹果设备上“自定义主题”页更高、新按钮更好点。服务端只改了版本号，不更新也能用。
+
 **0.13.0**：挂载 WebDAV / OPDS / 服务器文件夹（新增 server/mounts.js，服务端要整个 server 目录一起更新），网盘经 OpenList 挂载；阅读设置改成苹果图书风格的主题与自定义主题。
 
 **0.12.2**：修复 iPhone、iPad 和 Mac 的书架、侧栏、弹窗和阅读器界面。服务端无需更新。
