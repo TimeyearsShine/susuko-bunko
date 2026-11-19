@@ -1,6 +1,6 @@
 // 在线书库：Novelia（轻小说机翻机器人）。文库小说按封面宫格，网络小说按列表。
 // 点开看详情，“加入书架”会让自己的服务器去 Novelia 取 EPUB，拿回来按普通文件导入。
-import { h, icon, loader, toast, dialog } from './ui.js';
+import { h, icon, loader, toast, dialog, confirmDialog } from './ui.js';
 import * as store from './store.js';
 
 // 分级、筛选和 Novelia 网站上的一致；R18 那几项要登录后才会出现
@@ -22,7 +22,7 @@ const st = {
 /** 文库小说标题里常带“（1）”“第2卷”，拆成系列名，导入后能和同系列的放在一起 */
 const seriesOf = (title) => String(title || '').replace(/\s*[(（【\[]?\s*(第?\s*[0-9０-９一二三四五六七八九十]+\s*[卷巻集册]?)\s*[)）】\]]?\s*$/, '').trim();
 
-export function renderOnline(body, { importFiles }) {
+export function renderOnline(body, { importFiles, popMenu }) {
   body.className = 'body online-page';
   if (!store.isConfigured()) {
     body.replaceChildren(h('div.ol-empty', h('p', '在线书库要通过你自己的服务器转发（Novelia 不允许网页直接跨站请求）。'), h('p.muted', '先在 设置 → 账号 里连上服务器就能用了。')));
@@ -75,11 +75,26 @@ export function renderOnline(body, { importFiles }) {
     acct);
   body.replaceChildren(head, filters, results, more, h('p.ol-credit', '内容来自 ', h('a', { href: 'https://n.novelia.cc', target: '_blank', rel: 'noopener' }, 'Novelia 轻小说机翻机器人'), '，译文是机器翻译。'));
 
+  // 已登录时点账号只弹出菜单，退出要再确认一次，免得误点就掉线
   function drawAccount() {
     const a = st.account;
     acct.replaceChildren(a?.signedIn
-      ? h('button.btn.is-soft.is-small', { type: 'button', title: '退出 Novelia 账号', onclick: async () => { st.account = await store.novelia.logout().catch(() => ({ signedIn: false })); drawAccount(); drawFilters(); reload(); } }, icon('user', 16), a.username || '已登录')
+      ? h('button.btn.is-soft.is-small', { type: 'button', title: 'Novelia 账号', 'aria-haspopup': 'menu', onclick: (e) => accountMenu(e.currentTarget) }, icon('user', 16), a.username || '已登录')
       : h('button.btn.is-soft.is-small', { type: 'button', onclick: loginDialog }, '登录 Novelia'));
+  }
+  async function logout() {
+    if (!await confirmDialog('退出 Novelia', '退出后 R18 分级会隐藏，需要重新输入密码才能再登录。', { ok: '退出登录', danger: true })) return;
+    st.account = await store.novelia.logout().catch(() => ({ signedIn: false }));
+    drawAccount(); drawFilters(); reload();
+  }
+  function accountMenu(anchor) {
+    const a = st.account || {};
+    const items = [
+      { icon: 'globe', label: '打开 Novelia 网站', sub: 'n.novelia.cc', onclick: () => window.open('https://n.novelia.cc', '_blank', 'noopener') },
+      { icon: 'logout', label: '退出登录', onclick: logout },
+    ];
+    if (popMenu) popMenu(anchor, [{ title: a.username ? `已登录：${a.username}` : '已登录 Novelia', items }]);
+    else logout();
   }
   async function loginDialog() {
     await dialog('登录 Novelia', (close) => {

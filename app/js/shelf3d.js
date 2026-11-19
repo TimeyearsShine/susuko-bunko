@@ -67,12 +67,18 @@ export function mountShelf(host, items, opts) {
 
   let K = 1; // 随书本大小缩放的系数
   function measure() {
-    // 书本大小跟着可用的宽和高走：窗口放大，书也跟着放大，不会只缩在中间一小块
+    // 书本大小同时受宽和高限制：高度按“书 + 抬起来的那点 + 地面阴影”整体算进去，
+    // 全屏时不会顶出上边被裁掉；窗口里如果宽度先到上限，多出来的高度上下分掉，不再全堆在书下面
     const w = root.clientWidth, hgt = root.clientHeight || 400;
-    CW = Math.round(Math.max(118, Math.min(w * 0.2, (hgt - 70) / 1.42, 460)));
+    const padTop = 12, padBot = 22, extra = 1.08; // extra：正中那本抬起 + 透视放大
+    const byH = (hgt - padTop - padBot) / (1.42 * extra);
+    const byW = w * (w < 700 ? 0.5 : 0.32);
+    CW = Math.round(Math.max(110, Math.min(byW, byH, 640)));
     CH = Math.round(CW * 1.42);
     T = Math.round(CW * 0.2);
     K = CW / 184;
+    const slack = Math.max(0, hgt - padTop - padBot - CH * extra);
+    root.style.setProperty('--sb', `${Math.round(padBot + slack * 0.42)}px`); // 书底离书架底边多远
     root.style.setProperty('--persp', `${Math.round(CW * 6)}px`);
     root.style.setProperty('--cw', `${CW}px`);
     root.style.setProperty('--ch', `${CH}px`);

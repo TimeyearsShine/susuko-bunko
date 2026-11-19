@@ -486,7 +486,7 @@ function renderBody() {
   if (f === 'excerpts') return renderExcerpts();
   if (f === 'settings') return renderSettings();
   if (f === 'tags') return renderTagCloud();
-  if (f === 'online') return renderOnline(els.body, { importFiles });
+  if (f === 'online') return renderOnline(els.body, { importFiles, popMenu });
   const list = visibleBooks();
   if (!list.length) return renderEmpty();
   if (view.layout === 'list') return renderList(list);

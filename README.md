@@ -99,8 +99,8 @@ npx tauri ios build --no-sign          # 未签名 IPA
 GitHub Actions 会自动打包四个平台。改好版本号（`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`server/server.js`）并在下面“升级服务端”里写一行 `**版本号**：更新说明`，然后推一个标签：
 
 ```bash
-git tag v0.13.1
-git push origin v0.13.1
+git tag v0.13.2
+git push origin v0.13.2
 ```
 
 Windows、安卓、iOS、macOS 都打包成功后，会自动创建 GitHub Release，上传四个安装包，说明取自 README 里那一行。标签里带“-”（如 `v0.13.1-beta.1`）的标成预发布。只想试打包时，在 Actions → “打包客户端” → Run workflow，安装包在运行页面底部的 Artifacts 里，不会发布。
@@ -174,6 +174,15 @@ iOS 是未签名 IPA（用 AltStore、SideStore 等自签安装）；macOS 只�
 - **翻页动画 → 仿真**：纸角跟着手指走，松手时翻过去或落回原位；点按、键盘、音量键翻页也是同样的翻纸动画，翻到下一章也会翻。双页时，翻起来那张纸的背面就是下一页，跟着折痕一起转。竖排暂时用滑动代替。
 - **纸质书效果**：纸张纹理、双页中间的书缝阴影、两侧一页页叠起来的书边（左边是读过的、右边是没读的，厚度跟着进度变）。
 
+## 漫画画质增强（waifu2x）
+
+漫画阅读 → 设置 → 画质增强：用 waifu2x 给漫画降噪（3 级），后台排队先处理当前页和后面 10 页，处理好的页自动换上去，翻页时不用等。
+
+- **高画质**：扫描漫画模型（swin_unet / art_scan），效果最好；**快速**：CUNet 模型，快一些。
+- 计算在你自己的设备上做：有 WebGPU 的（新版 Chrome / Edge、Windows 版、较新的安卓）用显卡，几秒一页；没有的退回 CPU，会慢很多。
+- 运行库（onnxruntime-web）和模型（来自 nagadomi/nunif，MIT 许可）第一次用到时由服务器下载到 `数据目录/waifu2x/`，之后各台设备都从你的服务器取。服务器下载不动时，可以设环境变量换镜像：`WAIFU2X_ORT_BASE`（默认 jsDelivr 上的 onnxruntime-web 1.20.1）、`WAIFU2X_MODEL_BASE`（默认 Hugging Face 上的 deepghs/waifu2x_onnx 20230504 版，例如换成 hf-mirror.com），或者手动把文件放进 `数据目录/waifu2x/ort/` 和 `数据目录/waifu2x/models/swin_unet/art_scan/noise3.onnx` 这样的位置。
+- 处理结果只放在内存里，关掉书就释放；超过 1200 万像素的图会跳过。
+
 ## 同步是怎么工作的
 
 - 服务器是唯一的数据源。导入一本书时，客户端在本地读出书名、作者和封面，再把文件上传；相同文件（按 SHA-256）不会重复保存。
@@ -182,6 +191,8 @@ iOS 是未签名 IPA（用 AltStore、SideStore 等自签安装）；macOS 只�
 - 合集、改名、删除需要联网才能操作。
 
 ## 升级服务端
+
+**0.13.2**：漫画画质增强（waifu2x 降噪 3 级，后台预先处理后面 10 页）；立体书架按窗口高度和宽度一起算大小，全屏不再顶出上边，普通窗口下面也不再空一大块；在线书库点已登录的账号不再直接退出，改成弹出菜单，退出要再确认。**服务端要更新**（新增 `server/waifu2x.js`，提供模型文件）。
 
 **0.13.1**：Release 同时提供 Windows、安卓、iOS（未签名 IPA）和 macOS（Apple 芯片）四个安装包，推版本标签后自动发布；Mac 版改在 macOS 26 上编译，修好了链接和新图标的编译问题；苹果设备上“自定义主题”页更高、新按钮更好点。服务端只改了版本号，不更新也能用。
 
