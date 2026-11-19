@@ -19,6 +19,7 @@ const GLYPH = {
 
 /** 桌面客户端使用自绘标题栏，移动端保留系统交互。 */
 export function isDesktopShell() {
+  if (window.__susukoApplePlatform === 'ios') return false;
   if (/[?&]winbar=1/.test(location.search)) return true; // 在浏览器里预览标题栏用
   const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
     || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
@@ -46,6 +47,12 @@ export function mountWinbar() {
     tip.textContent = label;
   }
   pin.addEventListener('click', () => { pin.classList.add('show-tip'); clearTimeout(pin._t); pin._t = setTimeout(() => pin.classList.remove('show-tip'), 1400); });
+
+  if (window.__susukoApplePlatform === 'macos') {
+    document.body.append(h('div.winbar', h('div.win-pin-wrap', pin, tip)));
+    setPin(pinned, false);
+    return;
+  }
 
   const maxBtn = h('button.win-btn', { type: 'button', 'aria-label': '最大化', title: '最大化', onclick: () => call('toggleMaximize') }, svg(GLYPH.max));
   const ctrls = h('div.win-ctrls',

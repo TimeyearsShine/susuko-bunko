@@ -241,7 +241,18 @@ function renderShelf() {
   els.main = h('main.main', h('header.topbar', els.menuBtn, els.heading, els.tools), els.intro, els.body, fileInput);
   // 电脑：侧栏顶上一个按钮，收成只剩图标的窄条
   const sideBtn = h('button.icon-btn.side-toggle', { type: 'button', onclick: () => setSideMini(!prefs.get('sideMini', false)) }, icon('sidebar', 20));
-  els.side = h('aside.side', h('div.side-top', sideBtn), els.nav, els.me);
+  const appleBrand = window.__susukoApplePlatform && h('div.brand.apple-sidebar-brand',
+    h('img.brand-icon', { src: 'icon-96.png', alt: '' }), h('span.brand-name', 'スス子文庫'));
+  els.drawerClose = appleBrand && h('button.icon-btn.apple-drawer-close', {
+    type: 'button', 'aria-label': '关闭侧栏', onclick: () => setDrawer(false),
+  }, icon('close', 20));
+  els.side = h('aside.side', h('div.side-top', appleBrand || null, sideBtn, els.drawerClose || null), els.nav, els.me);
+  if (appleBrand) {
+    els.side.id = 'library-sidebar';
+    els.side.setAttribute('aria-label', '书架侧栏');
+    els.menuBtn.setAttribute('aria-controls', els.side.id);
+    els.menuBtn.setAttribute('aria-expanded', 'false');
+  }
   els.sideBtn = sideBtn;
   els.shell = h('div.shell', els.side, els.main, els.detail, els.pill, els.bar, h('div.drawer-scrim', { onclick: () => setDrawer(false) }));
   app.replaceChildren(els.shell);
@@ -256,11 +267,36 @@ function setSideMini(on, save = true) {
   els.sideBtn.title = label; els.sideBtn.setAttribute('aria-label', label); els.sideBtn.setAttribute('aria-expanded', String(!on));
 }
 function setDrawer(open) {
+  const wasOpen = document.body.classList.contains('nav-open');
   document.body.classList.toggle('nav-open', open);
   els.menuBtn?.setAttribute('aria-expanded', String(open));
+  if (els.drawerClose) {
+    for (const section of [els.main, els.detail, els.pill, els.bar]) section.inert = open;
+    if (open) {
+      els.side.setAttribute('role', 'dialog');
+      els.side.setAttribute('aria-modal', 'true');
+      (els.nav.querySelector('.is-active') || els.drawerClose).focus();
+    } else {
+      els.side.removeAttribute('role');
+      els.side.removeAttribute('aria-modal');
+      if (wasOpen && els.menuBtn.getClientRects().length) els.menuBtn.focus({ preventScroll: true });
+    }
+    return;
+  }
   if (open) els.nav.querySelector('.is-active, .nav-item')?.focus({ preventScroll: true });
 }
-window.addEventListener('keydown', (e) => { if (e.key === 'Escape' && document.body.classList.contains('nav-open')) { e.stopPropagation(); setDrawer(false); els.menuBtn.focus(); } }, true);
+window.addEventListener('keydown', (e) => {
+  if (e.key !== 'Escape' || !document.body.classList.contains('nav-open')) return;
+  if (els.drawerClose && document.querySelector('dialog[open]')) return;
+  e.stopPropagation();
+  setDrawer(false);
+  if (!els.drawerClose) els.menuBtn.focus();
+}, true);
+if (window.__susukoApplePlatform) {
+  matchMedia('(max-width: 760px)').addEventListener('change', (event) => {
+    if (!event.matches && document.body.classList.contains('nav-open')) setDrawer(false);
+  });
+}
 
 /** 手机上的“更多”菜单：视图、排序、选择、同步、导入 */
 function moreMenu(anchor) {
@@ -1561,8 +1597,18 @@ function changePasswordDialog() {
 
 function settingsLook() {
   const redraw = () => renderBody();
+  const appleSize = window.__susukoApplePlatform && h('select.field', {
+    'aria-label': '界面大小',
+    onchange: (e) => {
+      const value = e.target.value;
+      prefs.set('appleInterfaceSize', value);
+      document.documentElement.dataset.appleSize = value;
+    },
+  }, ...[['compact', '标准'], ['comfortable', '较大'], ['large', '最大']].map(([value, label]) =>
+    h('option', { value, selected: document.documentElement.dataset.appleSize === value }, label)));
   return [themeCard(), h('section.set-card',
     h('h2', '外观'),
+    appleSize ? row('界面大小', appleSize, '仅在这台设备上生效。正文字号可在阅读器内调整。') : null,
     row('界面主题', segOf('界面主题', [['auto', '跟随系统'], ['light', '浅色'], ['dark', '深色']], prefs.get('theme', 'auto'), (v) => { prefs.set('theme', v); applyTheme(); redraw(); })),
     row('书架的查看方式', segOf('查看方式', [['shelf', '立体书架'], ['grid', '封面'], ['list', '列表']], view.layout, (v) => { view.layout = v; prefs.set('layout', v); redraw(); })),
     row('同系列的书叠成一本', segOf('叠放', [[true, '开'], [false, '关']], prefs.get('stack', true), (v) => { prefs.set('stack', v); redraw(); })),
@@ -1737,7 +1783,9 @@ function settingsData() {
 
 // ---------- 导入 ----------
 // ---------- 导入菜单：本机文件 / 百度网盘 ----------
+let closeApplePopMenu;
 function popMenu(anchor, sections) {
+  closeApplePopMenu?.();
   document.querySelector('.pop-menu')?.remove();
   const menu = h('div.pop-menu', { role: 'menu' }, sections.map((sec, i) => [
     i > 0 && h('hr.pop-sep'),
@@ -1745,10 +1793,50 @@ function popMenu(anchor, sections) {
     sec.items.map((it) => h('button.pop-item' + (it.on ? '.is-on' : ''), { type: 'button', role: it.on != null ? 'menuitemradio' : 'menuitem', 'aria-checked': it.on != null ? String(!!it.on) : null, onclick: () => { close(); it.onclick(); } },
       h('span.pop-icon', icon(it.icon, 20)), h('span.pop-text', h('b', it.label), it.sub && h('small', it.sub)))),
   ]));
-  const close = () => { menu.remove(); document.removeEventListener('pointerdown', outside, true); document.removeEventListener('keydown', esc, true); };
+  let stopPositioning;
+  const close = () => {
+    menu.remove();
+    document.removeEventListener('pointerdown', outside, true);
+    document.removeEventListener('keydown', esc, true);
+    stopPositioning?.();
+    if (closeApplePopMenu === close) closeApplePopMenu = undefined;
+  };
   const outside = (e) => { if (!menu.contains(e.target) && !anchor.contains(e.target)) close(); };
   const esc = (e) => { if (e.key === 'Escape') { e.stopPropagation(); close(); anchor.focus(); } };
   document.body.append(menu);
+  if (window.__susukoApplePlatform) {
+    const viewport = window.visualViewport;
+    const listeners = new AbortController();
+    const options = { signal: listeners.signal, passive: true };
+    const place = () => {
+      if (!anchor.isConnected || !anchor.getClientRects().length) { close(); return; }
+      const style = getComputedStyle(document.documentElement);
+      const inset = (edge) => parseFloat(style.getPropertyValue('--safe-' + edge)) || 0;
+      const left = Math.max(inset('l'), viewport?.offsetLeft ?? 0) + 8;
+      const top = Math.max(inset('t'), viewport?.offsetTop ?? 0) + 8;
+      const right = Math.min(innerWidth - inset('r'), (viewport?.offsetLeft ?? 0) + (viewport?.width ?? innerWidth)) - 8;
+      const bottom = Math.min(innerHeight - inset('b'), (viewport?.offsetTop ?? 0) + (viewport?.height ?? innerHeight)) - 8;
+      const r = anchor.getBoundingClientRect();
+      menu.style.setProperty('--apple-menu-width', `${Math.max(0, right - left)}px`);
+      const below = Math.max(0, bottom - r.bottom - 8);
+      const above = Math.max(0, r.top - top - 8);
+      const opensUp = menu.scrollHeight + 2 > below && above > below;
+      menu.style.maxHeight = `${opensUp ? above : below}px`;
+      menu.style.top = `${opensUp ? r.top - 8 - menu.offsetHeight : Math.max(top, r.bottom + 8)}px`;
+      menu.style.left = `${Math.max(left, Math.min(right - menu.offsetWidth, r.right - menu.offsetWidth))}px`;
+    };
+    stopPositioning = () => listeners.abort();
+    closeApplePopMenu = close;
+    window.addEventListener('resize', place, options);
+    window.addEventListener('scroll', (e) => { if (!menu.contains(e.target)) place(); }, { ...options, capture: true });
+    viewport?.addEventListener('resize', place, options);
+    viewport?.addEventListener('scroll', place, options);
+    place();
+    document.addEventListener('pointerdown', outside, true);
+    document.addEventListener('keydown', esc, true);
+    menu.querySelector('button')?.focus({ preventScroll: true });
+    return;
+  }
   const r = anchor.getBoundingClientRect();
   menu.style.top = `${r.bottom + 8}px`;
   menu.style.left = `${Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, r.right - menu.offsetWidth))}px`;
@@ -2146,6 +2234,10 @@ window.addEventListener('keydown', (e) => {
   }
 });
 (async () => {
+  if (window.__susukoApplePlatform) {
+    const { mountAppleInterface } = await import('./apple-interface.js');
+    mountAppleInterface(window.__susukoApplePlatform, prefs.get('appleInterfaceSize', 'comfortable'));
+  }
   mountWinbar();
   await store.init();
   if (!store.hasStarted()) { if (location.hash.startsWith('#/read')) history.replaceState(null, '', '#/'); renderWelcome(); return; }

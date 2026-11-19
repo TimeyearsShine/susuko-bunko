@@ -1,0 +1,118 @@
+{
+  "fill-specializations": [
+    {
+      "value": {
+        "automatic-gradient": "extended-srgb:0.44000,0.73500,0.89000,1.00000"
+      }
+    },
+    {
+      "appearance": "dark",
+      "value": {
+        "automatic-gradient": "extended-srgb:0.12500,0.24000,0.37000,1.00000"
+      }
+    }
+  ],
+  "groups": [
+    {
+      "name": "Book",
+      "layers": [
+        {
+          "image-name": "Book-Pages.svg",
+          "name": "Book Pages",
+          "glass": true,
+          "fill-specializations": [
+            {
+              "value": "automatic"
+            },
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "extended-srgb:0.83000,0.91000,1.00000,1.00000"
+              }
+            }
+          ]
+        },
+        {
+          "image-name": "Book-Cover.svg",
+          "name": "Book Cover",
+          "glass": true
+        }
+      ],
+      "translucency": {
+        "enabled": true,
+        "value": 0.19
+      },
+      "lighting": "individual",
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.32
+      }
+    },
+    {
+      "name": "Hair Tie",
+      "layers": [
+        {
+          "image-name": "Hair-Tie.svg",
+          "name": "Hair Tie",
+          "glass": true
+        }
+      ],
+      "translucency": {
+        "enabled": true,
+        "value": 0.34
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.28
+      }
+    },
+    {
+      "name": "Face",
+      "layers": [
+        {
+          "image-name": "Eyes.svg",
+          "name": "Eyes",
+          "glass": false
+        },
+        {
+          "image-name": "Face.svg",
+          "name": "Face",
+          "glass": false,
+          "fill-specializations": [
+            {
+              "value": "automatic"
+            },
+            {
+              "appearance": "dark",
+              "value": {
+                "solid": "extended-srgb:0.96000,0.80000,0.80000,1.00000"
+              }
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "name": "Hair",
+      "layers": [
+        {
+          "image-name": "Hair.svg",
+          "name": "Hair",
+          "glass": true
+        }
+      ],
+      "translucency": {
+        "enabled": true,
+        "value": 0.24
+      },
+      "shadow": {
+        "kind": "neutral",
+        "opacity": 0.35
+      }
+    }
+  ],
+  "supported-platforms": {
+    "squares": "shared",
+    "circles": []
+  }
+}

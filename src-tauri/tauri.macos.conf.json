@@ -1,4 +1,7 @@
 {
+  "build": {
+    "beforeBundleCommand": "sh src-tauri/native/build-macos-icon.sh"
+  },
   "app": {
     "windows": [
       {
@@ -9,7 +12,9 @@
         "minHeight": 520,
         "dragDropEnabled": false,
         "transparent": false,
-        "decorations": false,
+        "decorations": true,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
         "shadow": true
       }
     ]
@@ -19,7 +24,13 @@
       "app"
     ],
     "icon": [
-      "icons/icon.icns"
-    ]
+      "target/macos-app-icon/AppIcon.icns"
+    ],
+    "macOS": {
+      "files": {
+        "Resources/Assets.car": "target/macos-app-icon/Assets.car"
+      },
+      "infoPlist": "native/macos-icon.plist"
+    }
   }
 }

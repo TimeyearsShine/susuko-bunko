@@ -81,6 +81,19 @@ npm run build:android                    # APK 在 src-tauri/gen/android/app/bui
 
 正式安装需要给 APK 签名，见 Tauri 文档的 Android 签名一节。嫌麻烦的话，安卓上也可以直接用 Chrome 打开网页版，选“添加到主屏幕”。
 
+## 2c. 构建苹果客户端
+
+使用 Xcode 26 或更新版本构建。iPadOS、iOS 和 macOS 26 起，书架和阅读器工具栏使用系统液态玻璃。iPad 大窗口同时显示侧栏、书架和图书详情，窄窗口会把详情浮在书架上。
+
+iPhone、iPad 和 Mac 共用 `src-tauri/icons/AppIcon.icon`。用 Icon Composer 编辑图层，Xcode 在构建时编译系统外观和旧系统所需的静态图标。Safari 添加到主屏幕时使用 `app/apple-touch-icon.png`。
+
+```bash
+npm install
+npx tauri build --bundles app          # macOS
+rustup target add aarch64-apple-ios
+npx tauri ios build --no-sign          # 未签名 IPA
+```
+
 ## 百度网盘（放大体积的漫画）
 
 漫画可以留在百度网盘里，书架上只记位置：看书时由你的服务器拿着授权去网盘取正在看的那几页转给客户端，不占服务器硬盘（但会走服务器的流量）。
@@ -137,6 +150,8 @@ npm run build:android                    # APK 在 src-tauri/gen/android/app/bui
 - 合集、改名、删除需要联网才能操作。
 
 ## 升级服务端
+
+**0.12.2**：修复 iPhone、iPad 和 Mac 的书架、侧栏、弹窗和阅读器界面。服务端无需更新。
 
 **0.12.1**：仿真翻页重做光影（纸纹和书缝画在书页里跟着纸一起翻、去掉大模糊阴影更流畅、水平拖动时纸角自然抬起），底部状态栏和书页融为一体；在线书库筛选点了立刻高亮，登录后出现 R18 分级，网络小说加上来源 / 分级 / 翻译 / 排序筛选。服务端要更新 server/novelia.js。
 
