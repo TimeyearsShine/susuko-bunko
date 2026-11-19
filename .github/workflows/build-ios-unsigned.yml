@@ -1,0 +1,54 @@
+name: 打包未签名 iOS IPA
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [build/ios-unsigned]
+
+permissions:
+  contents: read
+
+jobs:
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: 初始化 iOS 工程
+        run: |
+          npm install --no-save @tauri-apps/cli@2.12.6
+          test -f src-tauri/gen/apple/susuko-bunko.xcodeproj/project.pbxproj
+      - name: 编译真机 IPA
+        run: npx --no-install tauri ios build --ci --target aarch64 --no-sign
+      - name: 检查并整理 IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          ipa=$(find src-tauri/gen/apple -type f -name '*.ipa' -print -quit)
+          test -n "$ipa"
+          unpacked=$(mktemp -d)
+          unzip -q "$ipa" -d "$unpacked"
+          apps=("$unpacked"/Payload/*.app)
+          test "${#apps[@]}" -eq 1
+          plist="${apps[0]}/Info.plist"
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$plist" | grep -Fx iPhoneOS
+          xcrun lipo -archs "${apps[0]}/$executable" | grep -w arm64
+          test ! -f "${apps[0]}/embedded.mobileprovision"
+          mkdir dist-ios
+          cp "$ipa" "dist-ios/SusukoBunko-${version}-iOS-unsigned.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-ipa
+          path: dist-ios/*.ipa
+          if-no-files-found: error
