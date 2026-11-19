@@ -130,13 +130,13 @@ export function mountShelf(host, items, opts) {
   let drag = null;
   const PX = () => CW * 0.42; // 拖动多少像素换一本
   root.addEventListener('pointerdown', (e) => {
-    if (e.button > 0) return;
+    if (!e.isPrimary || e.button !== 0) return;
     cancelAnimationFrame(raf);
     drag = { x: e.clientX, y: e.clientY, pos, moved: false, samples: [[e.timeStamp, e.clientX]], target: e.target };
     root.setPointerCapture(e.pointerId);
   });
   root.addEventListener('pointermove', (e) => {
-    if (!drag) return;
+    if (!e.isPrimary || !drag) return;
     const dx = e.clientX - drag.x;
     if (!drag.moved && Math.abs(dx) < 6) return;
     drag.moved = true;
@@ -146,9 +146,10 @@ export function mountShelf(host, items, opts) {
     layout();
   });
   const release = (e) => {
-    if (!drag) return;
+    if (!e.isPrimary || !drag) return;
     const d = drag;
     drag = null;
+    if (e.type === 'pointercancel') { settle(); return; }
     if (!d.moved) { // 点按：点中间那本打开，点旁边的书把它转到中间
       const el = d.target.closest?.('.b3d');
       const i = books.findIndex((b) => b.el === el);
@@ -161,7 +162,6 @@ export function mountShelf(host, items, opts) {
     const v = t1 > t0 ? (x1 - x0) / (t1 - t0) : 0; // 像素 / 毫秒
     target = Math.round(pos - (v * 260) / PX()); // 甩得越快滑得越远
     animate();
-    if (e?.type === 'pointercancel') settle();
   };
   root.addEventListener('pointerup', release);
   root.addEventListener('pointercancel', release);

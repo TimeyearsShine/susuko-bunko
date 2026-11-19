@@ -1,0 +1,25 @@
+{
+  "app": {
+    "windows": [
+      {
+        "title": "\u30b9\u30b9\u5b50\u6587\u5eab",
+        "width": 1180,
+        "height": 800,
+        "minWidth": 360,
+        "minHeight": 520,
+        "dragDropEnabled": false,
+        "transparent": false,
+        "decorations": false,
+        "shadow": true
+      }
+    ]
+  },
+  "bundle": {
+    "targets": [
+      "app"
+    ],
+    "icon": [
+      "icons/icon.icns"
+    ]
+  }
+}

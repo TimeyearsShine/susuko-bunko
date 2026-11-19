@@ -17,10 +17,12 @@ const GLYPH = {
   close: '<path d="M.5 .5l9 9M9.5 .5l-9 9"/>',
 };
 
-/** 只在 Windows / macOS / Linux 的桌面客户端里有；安卓和网页版什么都不做 */
+/** 桌面客户端使用自绘标题栏，移动端保留系统交互。 */
 export function isDesktopShell() {
   if (/[?&]winbar=1/.test(location.search)) return true; // 在浏览器里预览标题栏用
-  return isNativeShell && !/Android/i.test(navigator.userAgent) && !!window.__TAURI__?.window;
+  const mobile = /Android|iPhone|iPad|iPod/i.test(navigator.userAgent)
+    || (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
+  return isNativeShell && !mobile && !!window.__TAURI__?.window;
 }
 
 export function mountWinbar() {

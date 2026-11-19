@@ -204,13 +204,13 @@ export async function open({ host, book, title = book.title, source, progress, o
     // ---- 手势：拖动翻页 / 放大后拖动查看 / 点按 ----
     let down = null, tapTimer = null, lastTap = 0;
     touch.addEventListener('pointerdown', (e) => {
-      if (busy) return;
+      if (!e.isPrimary || e.button !== 0 || busy) return;
       down = { x: e.clientX, y: e.clientY, zx: zoom.x, zy: zoom.y, dragging: false, t: performance.now() };
       touch.setPointerCapture?.(e.pointerId);
       if (zoom.s === 1) prepareSides();
     });
     touch.addEventListener('pointermove', (e) => {
-      if (!down) return;
+      if (!e.isPrimary || !down) return;
       const dx = e.clientX - down.x, dy = e.clientY - down.y;
       if (zoom.s > 1) { zoom.x = down.zx + dx; zoom.y = down.zy + dy; clampZoom(); applyZoom(false); down.dragging = Math.abs(dx) + Math.abs(dy) > 6; return; }
       if (!down.dragging && Math.abs(dx) > 8 && Math.abs(dx) > Math.abs(dy)) { down.dragging = true; toggleChrome(false); }
@@ -222,7 +222,7 @@ export async function open({ host, book, title = book.title, source, progress, o
       }
     });
     const end = (e) => {
-      if (!down) return;
+      if (!e.isPrimary || !down) return;
       const dx = e.clientX - down.x, dy = e.clientY - down.y, dt = performance.now() - down.t;
       const d = down; down = null;
       if (zoom.s > 1) { if (!d.dragging) tap(e); return; }
@@ -237,7 +237,11 @@ export async function open({ host, book, title = book.title, source, progress, o
       tap(e);
     };
     touch.addEventListener('pointerup', end);
-    touch.addEventListener('pointercancel', () => { down = null; track.style.transform = ''; });
+    touch.addEventListener('pointercancel', (e) => {
+      if (!e.isPrimary) return;
+      down = null;
+      track.style.transform = '';
+    });
     function tap(e) {
       const now = performance.now();
       if (settings.zoom && now - lastTap < 280) { clearTimeout(tapTimer); lastTap = 0; toggleZoom(e.clientX, e.clientY); return; }

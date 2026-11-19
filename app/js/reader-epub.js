@@ -1273,7 +1273,7 @@ ${hl}
     drawSelection(false);
   }
   touch.addEventListener('pointerdown', (e) => {
-    if (e.button > 0) return;
+    if (!e.isPrimary || e.button !== 0) return;
     down = { x: e.clientX, y: e.clientY, t: Date.now(), dragging: false, selecting: false };
     try { touch.setPointerCapture(e.pointerId); } catch { /* 忽略 */ }
     clearTimeout(pressTimer);
@@ -1286,7 +1286,7 @@ ${hl}
     }, 420);
   });
   touch.addEventListener('pointermove', (e) => {
-    if (!down || busy) return;
+    if (!e.isPrimary || !down || busy) return;
     if (down.selecting) { extendSelectionTo(...local(e.clientX, e.clientY)); return; }
     const dx = e.clientX - down.x, dy = e.clientY - down.y;
     if (!down.dragging && Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
@@ -1305,6 +1305,7 @@ ${hl}
     }
   });
   touch.addEventListener('pointerup', (e) => {
+    if (!e.isPrimary) return;
     clearTimeout(pressTimer);
     if (!down) return;
     const d = down;
@@ -1322,7 +1323,8 @@ ${hl}
     if (Math.abs(dx) + Math.abs(dy) > 12) return;
     tapAt(...local(e.clientX, e.clientY), hitAt(e.clientX, e.clientY));
   });
-  touch.addEventListener('pointercancel', () => {
+  touch.addEventListener('pointercancel', (e) => {
+    if (!e.isPrimary) return;
     clearTimeout(pressTimer);
     if (down?.curl) curlDragEnd(false); else if (down?.dragging) show(page, false);
     down = null;
