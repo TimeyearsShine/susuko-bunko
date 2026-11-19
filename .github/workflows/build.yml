@@ -1,6 +1,11 @@
-# 在 GitHub 上自动打包 Windows 安装包和安卓 APK。
-# 用法：把整个项目推到一个 GitHub 仓库 → Actions → “打包客户端” → Run workflow，
-#       跑完后在这次运行页面底部的 Artifacts 里下载。
+# 在 GitHub 上自动打包 Windows、安卓、iOS、macOS 四个客户端。
+# 用法：
+#   · 发布新版本：推一个 v 开头的标签（例如 git tag v0.13.1 && git push origin v0.13.1），
+#     四个平台都打包成功后自动创建 GitHub Release 并上传安装包；标签里带“-”（如 v0.13.1-beta.1）的标成预发布。
+#   · 只想试打包：Actions → “打包客户端” → Run workflow，跑完在这次运行页面底部的 Artifacts 里下载，不会发布。
+#
+# 苹果：iOS 是未签名 IPA（用 AltStore / SideStore 等自签安装）；macOS 只有临时签名、没有公证，
+#       第一次打开要右键 → 打开。都用机器上最新的 Xcode 26 构建（液态玻璃和 Icon Composer 图标需要）。
 #
 # 安卓签名（可选但建议）：在仓库 Settings → Secrets and variables → Actions 里添加
 #   ANDROID_KEYSTORE_BASE64   签名文件的 base64（base64 -w0 my.jks）
@@ -13,6 +18,9 @@ on:
   workflow_dispatch:
   push:
     tags: ['v*']
+
+env:
+  TAURI_CLI_APPLE: 2.12.6 # 苹果工程（src-tauri/gen/apple）是用这个版本的 Tauri CLI 维护的
 
 jobs:
   windows:
@@ -96,3 +104,136 @@ jobs:
         with:
           name: android-apk
           path: SusukoBunko.apk
+
+  ios:
+    runs-on: macos-15
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 选用最新的 Xcode 26
+        run: |
+          x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -n "$x" ]; then sudo xcode-select -s "$x"; fi
+          xcodebuild -version
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-ios
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - name: 准备 iOS 工程
+        run: |
+          npm install --no-save "@tauri-apps/cli@$TAURI_CLI_APPLE"
+          test -f src-tauri/gen/apple/susuko-bunko.xcodeproj/project.pbxproj
+      - name: 编译真机 IPA（不签名）
+        run: npx --no-install tauri ios build --ci --target aarch64 --no-sign
+      - name: 检查并整理 IPA
+        shell: bash
+        run: |
+          set -euo pipefail
+          ipa=$(find src-tauri/gen/apple -type f -name '*.ipa' -print -quit)
+          test -n "$ipa"
+          unpacked=$(mktemp -d)
+          unzip -q "$ipa" -d "$unpacked"
+          apps=("$unpacked"/Payload/*.app)
+          test "${#apps[@]}" -eq 1
+          plist="${apps[0]}/Info.plist"
+          executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$plist")
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$plist")
+          /usr/libexec/PlistBuddy -c 'Print :CFBundleSupportedPlatforms:0' "$plist" | grep -Fx iPhoneOS
+          xcrun lipo -archs "${apps[0]}/$executable" | grep -w arm64
+          test ! -f "${apps[0]}/embedded.mobileprovision"
+          mkdir dist-ios
+          cp "$ipa" "dist-ios/Susuko-Bunko-${version}-iOS-universal-unsigned.ipa"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-ipa
+          path: dist-ios/*.ipa
+          if-no-files-found: error
+
+  macos:
+    # Icon Composer 图标（.icon）要在 macOS 26 上编译：macos-15 机器上 actool 会因为缺系统库崩溃
+    runs-on: macos-26
+    timeout-minutes: 40
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+      - name: 选用最新的 Xcode 26
+        run: |
+          x=$(ls -d /Applications/Xcode_26*.app 2>/dev/null | sort -V | tail -n 1 || true)
+          if [ -n "$x" ]; then sudo xcode-select -s "$x"; fi
+          xcodebuild -version
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-apple-darwin
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+      - run: npm install --no-save "@tauri-apps/cli@$TAURI_CLI_APPLE"
+      - name: 编译 Mac 应用（Apple 芯片）
+        run: npx --no-install tauri build --bundles app --target aarch64-apple-darwin
+      - name: 临时签名并打包成 zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          app=$(find src-tauri/target/aarch64-apple-darwin/release/bundle/macos -maxdepth 1 -name '*.app' -print -quit)
+          test -n "$app"
+          test -f "$app/Contents/Resources/Assets.car" # Icon Composer 编出来的明暗图标
+          # 没有开发者证书时用临时签名：Apple 芯片的 Mac 要求程序至少有这个签名才能运行
+          codesign --force --deep --sign - "$app"
+          codesign --verify --deep --strict "$app"
+          version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Contents/Info.plist")
+          mkdir dist-mac
+          ditto -c -k --sequesterRsrc --keepParent "$app" "dist-mac/Susuko-Bunko-${version}-macOS-arm64.zip"
+      - uses: actions/upload-artifact@v4
+        with:
+          name: macos-app
+          path: dist-mac/*.zip
+          if-no-files-found: error
+
+  # 推 v 开头的标签时：四个平台都成功后，创建 Release 并上传安装包
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: [windows, android, ios, macos]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: 创建或更新 Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag="$GITHUB_REF_NAME"
+          version="${tag#v}"; version="${version%%-*}"
+          ls -la dist
+          # 更新说明取自 README 里“**0.13.0**：……”这一行
+          summary=$(grep -m1 -F "**${version}**：" README.md | sed "s/^\*\*${version}\*\*：//" || true)
+          cat > notes.md <<NOTES
+          ${summary:-スス子文庫 ${tag}}
+
+          ### 下载哪个
+          - **Windows**：\`.exe\` 安装包
+          - **安卓**：\`SusukoBunko.apk\`
+          - **iPhone / iPad**：\`-iOS-universal-unsigned.ipa\`，未签名，用 AltStore、SideStore 等工具自签后安装（免费 Apple ID 签的每 7 天要续一次）
+          - **Mac（Apple 芯片）**：\`-macOS-arm64.zip\`，解压后拖进“应用程序”。只有临时签名、没有公证，第一次打开请右键 → 打开；如果提示“已损坏”，在终端执行 \`xattr -cr "/Applications/Susuko Bunko.app"\`
+          NOTES
+          sed -i 's/^          //' notes.md
+          flags=()
+          if [[ "$tag" == *-* ]]; then flags+=(--prerelease); fi
+          if gh release view "$tag" >/dev/null 2>&1; then
+            gh release upload "$tag" dist/* --clobber
+          else
+            gh release create "$tag" dist/* --title "スス子文庫 $tag" --notes-file notes.md --verify-tag "${flags[@]}"
+          fi

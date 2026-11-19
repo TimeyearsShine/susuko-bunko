@@ -1,6 +1,6 @@
 {
   "name": "susuko-bunko",
-  "version": "0.13.0",
+  "version": "0.13.1",
   "private": true,
   "description": "スス子文庫：自托管同步的轻小说 / 漫画阅读器",
   "scripts": {
