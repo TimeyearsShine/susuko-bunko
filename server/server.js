@@ -24,7 +24,7 @@ const OPEN_SIGNUP = process.env.OPEN_SIGNUP === '1';
 const DATA_DIR = path.resolve(process.env.DATA_DIR || path.join(__dirname, 'data'));
 const APP_DIR = path.resolve(process.env.APP_DIR || path.join(__dirname, '..', 'app'));
 const MAX_BOOK_BYTES = Number(process.env.MAX_BOOK_MB || 2048) * 1024 * 1024;
-const VERSION = '0.13.3';
+const VERSION = '0.13.4';
 // 百度网盘开放平台应用（也可以每个账号在设置里自己填）
 const BAIDU_APP_KEY = process.env.BAIDU_APP_KEY || '';
 const BAIDU_SECRET_KEY = process.env.BAIDU_SECRET_KEY || '';
@@ -287,7 +287,8 @@ function patchBook(book, body, lib) {
   if (typeof body.spineFace === 'string') book.spineFace = /^(none|[01](\.\d{1,3})?,[01](\.\d{1,3})?)?$/.test(body.spineFace) ? body.spineFace : '';
   if (typeof body.pageLayout === 'string') book.pageLayout = /^[pwc]{0,20000}$/.test(body.pageLayout) ? body.pageLayout : '';
   if ('volume' in body) book.volume = volumeOf(body.volume);
-  if (!book.series) book.volume = null;
+  if (typeof body.volumeLabel === 'string') book.volumeLabel = str(body.volumeLabel, 40); // 短篇、番外这类没有数字卷号的
+  if (!book.series) { book.volume = null; book.volumeLabel = ''; }
   if (Array.isArray(body.collections)) book.collections = [...new Set(body.collections.filter((c) => lib.collections[c]))];
   book.updatedAt = Date.now();
 }

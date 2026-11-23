@@ -99,8 +99,8 @@ npx tauri ios build --no-sign          # 未签名 IPA
 GitHub Actions 会自动打包四个平台。改好版本号（`package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml`、`server/server.js`）并在下面“升级服务端”里写一行 `**版本号**：更新说明`，然后推一个标签：
 
 ```bash
-git tag v0.13.3
-git push origin v0.13.3
+git tag v0.13.4
+git push origin v0.13.4
 ```
 
 Windows、安卓、iOS、macOS 都打包成功后，会自动创建 GitHub Release，上传四个安装包，说明取自 README 里那一行。标签里带“-”（如 `v0.13.1-beta.1`）的标成预发布。只想试打包时，在 Actions → “打包客户端” → Run workflow，安装包在运行页面底部的 Artifacts 里，不会发布。
@@ -199,6 +199,8 @@ iOS 是未签名 IPA（用 AltStore、SideStore 等自签安装）；macOS 只�
 - 合集、改名、删除需要联网才能操作。
 
 ## 升级服务端
+
+**0.13.4**：整套编辑：系列页的「整套编辑」或多选后的「编辑信息」，作者、画师、出版社、系列名一次填好写进每一本，还能统一加标签、逐本调卷号、按文件名重新编号；卷号新增“短篇”，可以写“安可短篇集”“SSS”这样的名字，另给一个排序数字决定它排在哪两卷之间；书脊竖排里的英文字母改成正着竖排、1～3 位数字横着挤一格（纵中横），不再整串躺倒。**服务端要更新**（新字段 volumeLabel）。
 
 **0.13.3**：两页拼在一张图里的漫画扫图自动拆成单页（日漫先右后左，双页时仍并排）；第一页是整张书衣时封面只裁出正面，详情里可以重裁或换回原图；导入菜单重做：电脑上从按钮处展开、不再斜着飞进来，书库和网盘排成小方块，手机上从底部升起。服务端只多记一个版面字段，需要更新 server/server.js。
 

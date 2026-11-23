@@ -271,6 +271,7 @@ html.is-mica .main { background: color-mix(in srgb, var(--surface) 62%, transpar
   background: rgba(20, 24, 36, .78); color: #fff; text-align: center; border-radius: 10px 0 0 0;
   font: 600 13px/1.5 var(--sans); font-variant-numeric: tabular-nums;
 }
+.cover-vol.is-text { max-width: 86%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; }
 .stack { position: relative; margin: 8px 8px 0 0; }
 .stack::before, .stack::after { /* 叠在后面的两本 */
   content: ""; position: absolute; inset: 0; border-radius: 5px 10px 10px 5px;
@@ -820,6 +821,10 @@ body.is-dragging .drop-hint { display: grid; }
 .sp.is-light .sp-title, .b3d.is-light .sp-title { text-shadow: none; }
 .sp-vol { font: 800 46cqw/1 var(--sans); font-variant-numeric: tabular-nums; letter-spacing: -.04em; }
 .sp-vol.is-long { font-size: 30cqw; }
+/* 竖排里的英文和数字：短数字横着挤一格（纵中横），其余字母正着竖排 */
+.v-tcy { text-combine-upright: all; -webkit-text-combine: horizontal; font-variant-numeric: tabular-nums; }
+.v-up { text-orientation: upright; letter-spacing: -.04em; }
+.sp-vol.is-text { writing-mode: vertical-rl; font: 800 var(--fs)/1.05 var(--sans); letter-spacing: 0; white-space: nowrap; }
 .sp-author { writing-mode: vertical-rl; text-orientation: mixed; font: 600 var(--fs)/1.05 var(--sans); white-space: nowrap; opacity: .95; }
 .sp-company { writing-mode: vertical-rl; font: 600 var(--fs)/1 var(--sans); white-space: nowrap; max-height: 9cqh; overflow: hidden; opacity: .9; }
 .sp-imprint {
@@ -1768,3 +1773,26 @@ html.is-desk .shell.is-mini .side-top { margin-top: 40px; }
 .sheet-row.w2x-status { padding-top: 0; }
 .w2x-note { display: block; font-size: 12.5px; line-height: 1.5; color: color-mix(in srgb, var(--paper-ink, var(--ink)) 70%, transparent); }
 .w2x-note:empty { display: none; }
+
+/* ---------- 卷号 / 短篇 ---------- */
+.vol-field { display: flex; gap: 8px; align-items: center; min-width: 0; }
+.vol-field .segmented { flex: none; }
+.vol-field .segmented button { padding-inline: 10px; }
+.vol-field .field { min-width: 0; flex: 1; }
+.vol-field .vol-order { flex: 0 0 86px; }
+
+/* ---------- 整套批量编辑 ---------- */
+.batch-note { margin: -2px 0 4px; }
+.batch-field.is-mixed .field::placeholder { font-style: italic; }
+.batch-vols { display: flex; flex-direction: column; gap: 6px; max-height: 340px; overflow-y: auto; padding: 2px; margin-inline: -2px; }
+.batch-row { display: grid; grid-template-columns: 34px minmax(0, 1fr) minmax(0, 1.5fr); gap: 10px; align-items: center; padding: 6px 8px; border-radius: 12px; background: color-mix(in srgb, var(--ink) 4%, transparent); }
+.batch-row.is-dirty { background: color-mix(in srgb, var(--accent) 9%, transparent); }
+.batch-thumb { width: 34px; height: 48px; border-radius: 4px; overflow: hidden; background: var(--line); }
+.batch-thumb > * { width: 100%; height: 100%; }
+.batch-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.batch-name { min-width: 0; font-size: 13px; line-height: 1.35; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; color: var(--muted); }
+.batch-tools { display: flex; gap: 14px; flex-wrap: wrap; }
+@media (max-width: 560px) {
+  .batch-row { grid-template-columns: 34px minmax(0, 1fr); }
+  .batch-row .vol-field { grid-column: 1 / -1; }
+}

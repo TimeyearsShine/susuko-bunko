@@ -8,7 +8,41 @@ export const SPINE_RATIO = 7.1; // 书脊高 ÷ 宽（书 1 : 1.42，厚度是�
 const H = SPINE_RATIO * 100; // 书脊高度，单位 cqw（宽度的百分之一）
 const GAP = 2.2 * SPINE_RATIO; // 各块之间的空隙（2.2cqh）
 
-const vlen = (s) => [...String(s || '')].reduce((n, ch) => n + (/[\x20-\x7e]/.test(ch) ? 0.55 : 1), 0);
+// 竖排时英文字母和数字的处理（照日文竖排习惯）：
+// 1～3 位的数字横着挤进一格（纵中横），其余字母、数字一个个正着竖排，不再整串躺倒。
+const RUN = /[0-9]{1,3}(?![0-9])|[A-Za-z0-9!?#&+.'’-]+/g;
+export function vtext(str) {
+  const s = String(str || ''), out = [];
+  let last = 0;
+  for (const m of s.matchAll(RUN)) {
+    if (m.index > last) out.push(s.slice(last, m.index));
+    const t = m[0];
+    const tcy = /^[0-9]{1,3}$/.test(t) && !/[0-9]/.test(s[m.index - 1] || '');
+    out.push(h(tcy ? 'span.v-tcy' : 'span.v-up', t));
+    last = m.index + t.length;
+  }
+  if (last < s.length) out.push(s.slice(last));
+  return out;
+}
+// 竖排占多少个字的高度：纵中横算一格，正立的字母约 0.8 格，空格半格
+const vlen = (s) => {
+  const str = String(s || '');
+  let n = 0, last = 0;
+  for (const m of str.matchAll(RUN)) {
+    n += [...str.slice(last, m.index)].reduce((k, ch) => k + (ch === ' ' ? 0.5 : 1), 0);
+    n += /^[0-9]{1,3}$/.test(m[0]) ? 1 : m[0].length * 0.8;
+    last = m.index + m[0].length;
+  }
+  return n + [...str.slice(last)].reduce((k, ch) => k + (ch === ' ' ? 0.5 : 1), 0);
+};
+const isNum = (v) => /^\d+(\.\d+)?$/.test(v);
+// 卷号：数字照旧横排大字；“安可短篇集”“SSS”这类短篇名竖排
+function volEl(v, manga) {
+  if (!v) return null;
+  if (isNum(v)) return h('span.sp-vol' + (manga ? '.is-manga' : '') + (v.length > 2 ? '.is-long' : ''), v);
+  return h('span.sp-vol.is-text' + (manga ? '.is-manga' : ''), { style: `--fs:${fitCol(vlen(v), 110, vlen(v) <= 3 ? 36 : manga ? 30 : 26).toFixed(1)}cqw` }, vtext(v));
+}
+const volH = (v) => (!v ? 0 : isNum(v) ? 48 : vlen(v) * fitCol(vlen(v), 110, vlen(v) <= 3 ? 36 : 26) * 1.06);
 
 // 书名一定要排得下：在剩下的高度里，找出能把整个书名放进去的最大字号（可以分几列竖排）
 function titleFit(len, room) {
@@ -44,21 +78,21 @@ export function buildSpine(spec, cls = '') {
   const markH = !L ? 36 : !logo ? Math.min(100, vlen(L.short || L.name) * 21 + 16) : { square: 78, wide: 43, light: 57 }[L.mark] || 78;
   const used = [
     layout === 'fantasia' ? 14 + 74 : layout === 'legacy' ? 64 + 21 : markH, // 顶上的小标（Fantasia 的圆标在中间）
-    v ? 48 : 0,
+    volH(v),
     authorText ? vlen(authorText) * aFs * 1.06 : 0,
     imprintText ? vlen(imprintText) * iFs * 1.12 + 22 : 0,
     companyText ? vlen(companyText) * cFs + 4 : 0,
   ];
   const items = used.filter(Boolean).length + 1;
   const room = H - used.reduce((a, b) => a + b, 0) - GAP * (items + 1) - 24;
-  const title = h('span.sp-title', { style: `--fs:${titleFit(vlen(spec.title), Math.max(80, room)).toFixed(1)}cqw` }, spec.title || '');
-  const vol = v && h('span.sp-vol' + (v.length > 2 ? '.is-long' : ''), v);
-  const author = authorText && h('span.sp-author', { style: `--fs:${aFs.toFixed(1)}cqw` }, authorText);
+  const title = h('span.sp-title', { style: `--fs:${titleFit(vlen(spec.title), Math.max(80, room)).toFixed(1)}cqw` }, vtext(spec.title));
+  const vol = volEl(v, false);
+  const author = authorText && h('span.sp-author', { style: `--fs:${aFs.toFixed(1)}cqw` }, vtext(authorText));
   const mark = (big) => (logo
     ? h('span.sp-mark.is-' + (L.mark || 'square') + (big ? '.is-big' : ''), h('img', { src: logo, alt: L.name, draggable: false, loading: 'lazy' }))
-    : L && h('span.sp-mark.is-text', { style: `--fs:${fitCol(vlen(L.short || L.name), 84, 20).toFixed(1)}cqw` }, L.short || L.name));
-  const nameBox = imprintText && h('span.sp-imprint', { style: `--fs:${iFs.toFixed(1)}cqw` }, imprintText);
-  const company = companyText && h('span.sp-company', { style: `--fs:${cFs.toFixed(1)}cqw` }, companyText);
+    : L && h('span.sp-mark.is-text', { style: `--fs:${fitCol(vlen(L.short || L.name), 84, 20).toFixed(1)}cqw` }, vtext(L.short || L.name)));
+  const nameBox = imprintText && h('span.sp-imprint', { style: `--fs:${iFs.toFixed(1)}cqw` }, vtext(imprintText));
+  const company = companyText && h('span.sp-company', { style: `--fs:${cFs.toFixed(1)}cqw` }, vtext(companyText));
 
   let parts;
   if (layout === 'gagaga') parts = [mark(), title, vol, author, h('span.sp-gap'), company, nameBox];
@@ -105,12 +139,12 @@ function buildMangaSpine(spec, cls) {
   const cFs = creators.length ? Math.min(...creators.map(([k, n]) => fitCol(vlen(n) + (k ? 2.6 : 0), 150, creators.length > 1 ? 24 : 28))) : 0;
   const mark = L && (logo
     ? h('span.sp-mark.is-manga' + (wide ? '.is-wide' : ''), h('img', { src: logo, alt: brand, draggable: false, loading: 'lazy' }))
-    : h('span.sp-mark.is-text.is-manga', { style: `--fs:${fitCol(vlen(brand), 90, 18).toFixed(1)}cqw` }, brand));
-  const title = h('span.sp-title', { style: '--fs:40cqw' }, spec.title || '');
-  const vol = v && h('span.sp-vol.is-manga' + (v.length > 2 ? '.is-long' : ''), v);
+    : h('span.sp-mark.is-text.is-manga', { style: `--fs:${fitCol(vlen(brand), 90, 18).toFixed(1)}cqw` }, vtext(brand)));
+  const title = h('span.sp-title', { style: '--fs:40cqw' }, vtext(spec.title));
+  const vol = volEl(v, true);
   const people = creators.length > 0 && h('span.sp-creators', { style: `--fs:${cFs.toFixed(1)}cqw` },
-    creators.map(([k, n]) => h('span.sp-creator', k && h('small', k), n)));
-  const bottom = company && h('span.sp-company.is-manga', { style: `--fs:${fitCol(vlen(company), 70, 15).toFixed(1)}cqw` }, company);
+    creators.map(([k, n]) => h('span.sp-creator', k && h('small', k), vtext(n))));
+  const bottom = company && h('span.sp-company.is-manga', { style: `--fs:${fitCol(vlen(company), 70, 15).toFixed(1)}cqw` }, vtext(company));
   const parts = [h('span.sp-cap'), mark || h('span.sp-pad'), title, vol, people, h('span.sp-gap'), bottom];
   const el = h('div.sp.is-manga' + (cls ? '.' + cls : '') + '.is-' + layout, h('div.sp-in', parts.filter(Boolean)), spec.reading && h('span.sp-ribbon'));
   return { el };
