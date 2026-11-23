@@ -77,6 +77,35 @@ export class ZipReader {
     return new Uint8Array(await new Response(stream).arrayBuffer());
   }
 
+  /** 只取文件开头约 n 字节（读图片宽高用），不解整份文件 */
+  async head(entryOrName, n = 16384) {
+    const e = typeof entryOrName === 'string' ? this.get(entryOrName) : entryOrName;
+    if (!e || e.encrypted) return null;
+    const buf = await this.src.read(e.offset, Math.min(this.src.size, e.offset + 30 + 1024 + n));
+    const v = new DataView(buf);
+    if (v.byteLength < 30 || u32(v, 0) !== 0x04034b50) return null;
+    const skip = 30 + u16(v, 26) + u16(v, 28);
+    const data = new Uint8Array(buf, Math.min(skip, buf.byteLength), Math.max(0, Math.min(e.compSize, buf.byteLength - skip)));
+    if (e.method === 0) return data.slice(0, n);
+    if (e.method !== 8) return null;
+    // 只解前面一截：数据不完整，流最后会报错，报错前已经解出来的部分照样能用
+    const out = [];
+    let got = 0;
+    try {
+      const reader = new Blob([data]).stream().pipeThrough(new DecompressionStream('deflate-raw')).getReader();
+      while (got < n) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        out.push(value); got += value.length;
+      }
+      reader.cancel().catch(() => {});
+    } catch { /* 截断的流 */ }
+    const all = new Uint8Array(got);
+    let o = 0;
+    for (const c of out) { all.set(c, o); o += c.length; }
+    return all;
+  }
+
   async text(entryOrName) {
     const b = await this.bytes(entryOrName);
     // 少数老书是 UTF-16

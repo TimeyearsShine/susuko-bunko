@@ -330,3 +330,5 @@
   max-height: min(860px, calc(100% - 24px - var(--apple-visible-top) - var(--apple-visible-bottom)));
 }
 :root[data-apple-interface] :is(.ts-size button, .ts-toggles button, .ts-custom, .tc-fonts button) { min-height: var(--apple-touch); }
+:root[data-apple-interface] .pop-menu.is-import { width: min(372px, var(--apple-menu-width, 100%)); }
+:root[data-apple-interface] .pop-tile { min-height: calc(var(--apple-touch) + 22px); }
