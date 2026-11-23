@@ -59,8 +59,8 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
-        CFBundleShortVersionString: 0.13.2
-        CFBundleVersion: "0.13.2"
+        CFBundleShortVersionString: 0.13.3
+        CFBundleVersion: "0.13.3"
     entitlements:
       path: susuko-bunko_iOS/susuko-bunko_iOS.entitlements
     scheme:

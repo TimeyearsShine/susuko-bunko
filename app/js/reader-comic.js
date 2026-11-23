@@ -1,31 +1,80 @@
 // 漫画阅读器：CBZ / ZIP。翻页（可日漫右翻、宽屏双页）或下拉长条。
 import { routeChip } from './cloud-direct.js';
 import { ZipReader, mimeOf, isImageName } from './zip.js';
-import { prefs, setProgress, natural, account } from './store.js';
+import { prefs, setProgress, natural, account, updateBook, remakeComicCover } from './store.js';
+import { probeLayout, frontRect, halfRect, cropBlob } from './pagefit.js';
 import { createW2x, w2xSupported, W2X_MODES, W2X_AHEAD } from './waifu2x.js';
 import { h, icon, loader, toast, menuButton, statusClock } from './ui.js';
 
-const DEFAULTS = { mode: 'page', rtl: true, spread: true, turn: 'slide', zoom: true, pageNum: true, applyAll: true, w2x: 'off' };
+const DEFAULTS = { mode: 'page', rtl: true, spread: true, turn: 'slide', zoom: true, pageNum: true, applyAll: true, w2x: 'off', split: true };
 
 export async function open({ host, book, title = book.title, source, progress, onExit }) {
   // 网盘里的图片文件夹本身就是一页一张图；压缩包则从里面挑出图片
   const zip = source.isPageList ? source : await ZipReader.open(source);
   const entries = zip.entries.filter((e) => !e.isDir && isImageName(e.name)).sort((a, b) => natural(a.name, b.name));
   if (!entries.length) throw new Error(source.isPageList ? '这个文件夹里没有图片' : '压缩包里没有图片');
-  const total = entries.length;
   // 本机文件读得快，预读两页就够；从服务器或网盘取的要多预读几页，翻页时才不用等
   const remote = !(source instanceof Blob);
   const AHEAD = remote ? 5 : 2;
   // 阅读方式可以只对这一本生效（比如某本是条漫就用下拉，其余还是日漫翻页）
   const own = prefs.get('comicBooks', {})[book.id];
   const settings = { ...DEFAULTS, ...prefs.get('comic', {}), ...(own || {}), applyAll: !own };
-  let page = Math.min(total - 1, Math.max(0, Number(progress?.loc?.page) || 0));
+
+  // ---------- 版面：跨页拼图拆成两页，整张书衣只显示正面 ----------
+  // 版面串一页一个字符（p 单页 / w 两页拼图 / c 整张书衣），导入时识别好存在书上；老书第一次打开时识别一次
+  let layout = book.pageLayout || '';
+  if (layout.length !== entries.length && typeof zip.head === 'function') {
+    layout = await probeLayout(zip, entries).catch(() => '');
+    if (layout) {
+      updateBook(book.id, { pageLayout: layout }).catch(() => {});
+      if (layout[0] === 'c') remakeComicCover(book.id, 'front').catch(() => {}); // 以前导入的书，封面顺便裁成正面
+    }
+  }
+  let pages = [], total = 0;
+  function buildPages() {
+    pages = [];
+    entries.forEach((_, i) => {
+      const k = settings.split ? layout[i] || 'p' : 'p';
+      if (k === 'c') pages.push({ i, part: 'front' });
+      else if (k === 'w') for (const part of settings.rtl ? ['R', 'L'] : ['L', 'R']) pages.push({ i, part }); // 日漫先读右半边
+      else pages.push({ i, part: 'full' });
+    });
+    total = pages.length;
+  }
+  // 把“第几张图、哪半边”换算成现在的页序号（换了拆分设置或阅读方向后，停在同一处）
+  function pageAt(entry, part) {
+    let v = pages.findIndex((p) => p.i === entry && (!part || p.part === part));
+    if (v < 0) v = pages.findIndex((p) => p.i >= entry);
+    return v < 0 ? Math.max(0, total - 1) : v;
+  }
+  buildPages();
+  const loc = progress?.loc || {};
+  let page = loc.entry != null ? pageAt(Number(loc.entry) || 0, loc.part) : pageAt(Math.max(0, Number(loc.page) || 0));
   let destroyed = false, cleanupView = () => {};
 
   // ---------- 图片缓存 ----------
   const urls = new Map();
+  const raw = new Map(); // 同一张图的两个半页共用一次读取
+  function entryBlob(i) {
+    if (!raw.has(i)) {
+      raw.set(i, zip.blobOf(entries[i], mimeOf(entries[i].name)));
+      raw.get(i).catch(() => raw.delete(i));
+      if (raw.size > 6) raw.delete(raw.keys().next().value);
+    }
+    return raw.get(i);
+  }
+  async function pageBlob(v) {
+    const p = pages[v];
+    const blob = await entryBlob(p.i);
+    if (p.part === 'full') return blob;
+    return cropBlob(blob, (bmp) => (p.part === 'front' ? frontRect(bmp, settings.rtl) : halfRect(bmp, p.part)));
+  }
   function urlOf(i) {
-    if (!urls.has(i)) urls.set(i, zip.blobOf(entries[i], mimeOf(entries[i].name)).then((b) => URL.createObjectURL(b)));
+    if (!urls.has(i)) {
+      const job = pageBlob(i).then((b) => URL.createObjectURL(b));
+      urls.set(i, job);
+      job.catch(() => { if (urls.get(i) === job) urls.delete(i); });
+    }
     return urls.get(i);
   }
   // 画质增强好了的页优先用增强后的图
@@ -52,7 +101,7 @@ export async function open({ host, book, title = book.title, source, progress, o
     if (settings.w2x === 'off' || !W2X_MODES[settings.w2x] || !conf?.url || !w2xSupported()) { w2xNote.textContent = ''; return; }
     w2x = createW2x({
       server: conf.url, mode: settings.w2x,
-      getBlob: (i) => zip.blobOf(entries[i], mimeOf(entries[i].name)),
+      getBlob: (i) => pageBlob(i),
       onStatus: (st) => {
         w2xStatus = st; w2xNote.textContent = w2xText(st);
         if (st.error && !startW2x.warned) { startW2x.warned = true; toast('画质增强没能启动：' + st.error, { error: true }); }
@@ -107,7 +156,7 @@ export async function open({ host, book, title = book.title, source, progress, o
     slider.value = lastShown + 1; fill();
     sliderLabel.textContent = `${lastShown + 1} / ${total}`;
     topSub.textContent = `第 ${lastShown + 1} / ${total} 页`;
-    if (save) setProgress(book.id, { page }, (lastShown + 1) / total);
+    if (save) setProgress(book.id, { page, entry: pages[page]?.i ?? page, part: pages[page]?.part }, (lastShown + 1) / total);
   }
 
   // ---------- 翻页模式 ----------
@@ -128,10 +177,17 @@ export async function open({ host, book, title = book.title, source, progress, o
     place();
 
     const spread = () => settings.spread && stage.clientWidth > stage.clientHeight * 1.15;
-    function group(p) { // 当前画面显示哪几页：封面单独一页，其后两两成对
-      if (!spread() || p === 0) return [p];
-      const first = p % 2 ? p : p - 1;
-      return first + 1 < total ? [first, first + 1] : [first];
+    // 双页时的分组：封面单独一页；从同一张拼图拆出的两半放回一起；其余单页两两成对
+    const groupOf = [];
+    for (let v = 0; v < total;) {
+      const p = pages[v], q = pages[v + 1];
+      const pair = v > 0 && q && (p.part === 'full' ? q.part === 'full' : (p.part === 'R' || p.part === 'L') && q.i === p.i);
+      const g = pair ? [v, v + 1] : [v];
+      for (const x of g) groupOf[x] = g;
+      v += g.length;
+    }
+    function group(p) { // 当前画面显示哪几页
+      return spread() ? groupOf[p] || [p] : [p];
     }
     const targetOf = (dir) => {
       const g = group(page);
@@ -317,7 +373,7 @@ export async function open({ host, book, title = book.title, source, progress, o
   // ---------- 下拉模式 ----------
   function mountScroll(save) {
     const scroller = h('div.comic-scroll');
-    const items = entries.map((_, i) => h('div.comic-strip', { 'data-i': i }));
+    const items = pages.map((_, i) => h('div.comic-strip', { 'data-i': i }));
     scroller.append(...items);
     stage.replaceChildren(scroller);
 
@@ -404,9 +460,19 @@ export async function open({ host, book, title = book.title, source, progress, o
     if (applyAll) { prefs.set('comic', rest); delete books[book.id]; }
     else books[book.id] = { mode: rest.mode, rtl: rest.rtl }; // 只对这本：只记阅读方式，其他设置仍然全局
     prefs.set('comicBooks', books);
-    if (!applyAll) prefs.set('comic', { ...prefs.get('comic', {}), turn: rest.turn, zoom: rest.zoom, pageNum: rest.pageNum, spread: rest.spread, w2x: rest.w2x });
+    if (!applyAll) prefs.set('comic', { ...prefs.get('comic', {}), turn: rest.turn, zoom: rest.zoom, pageNum: rest.pageNum, spread: rest.spread, w2x: rest.w2x, split: rest.split });
     root.classList.toggle('no-pagenum', !settings.pageNum);
     if ('w2x' in patch) { startW2x.warned = false; startW2x(); drawSheet(); return; }
+    if ('split' in patch || 'rtl' in patch) {
+      // 页序变了：按原来看到的那张图重新定位，缓存清掉重来
+      const at = pages[page];
+      buildPages();
+      page = at ? pageAt(at.i, at.part === 'front' || at.part === 'full' ? null : at.part) : 0;
+      for (const u of urls.values()) u.then((x) => URL.revokeObjectURL(x)).catch(() => {});
+      urls.clear();
+      slider.max = total;
+      startW2x();
+    }
     if ('turn' in patch || 'zoom' in patch || 'pageNum' in patch || 'applyAll' in patch) { drawSheet(); return; }
     mount(); drawSheet(); drawModeBtn();
   }
@@ -433,6 +499,9 @@ export async function open({ host, book, title = book.title, source, progress, o
         seg('宽屏双页', 'spread', [[true, '开'], [false, '关']]),
         toggleRow('允许双击放大画面', 'zoom', '放大后拖动查看细节，再双击还原'));
     }
+    rows.push(toggleRow('拆分跨页扫图', 'split', layout.includes('w') || layout.includes('c')
+          ? `这本有 ${[...layout].filter((k) => k === 'w').length} 张两页拼图${layout[0] === 'c' ? '，封面是整张书衣' : ''}：拆成单页，书衣只显示正面`
+          : '两页拼在一张图里的扫图拆成单页，整张书衣只显示正面'));
     rows.push(toggleRow('显示页码', 'pageNum'));
     const canW2x = w2xSupported() && !!account()?.url;
     rows.push(h('div.sheet-row.is-w2x', h('span.sheet-label', '画质增强', h('small', canW2x

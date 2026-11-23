@@ -1192,18 +1192,38 @@ select.field { appearance: auto; }
 
 /* ---------- 导入菜单 ---------- */
 .pop-menu {
-  position: fixed; z-index: 400; width: 300px; padding: 8px; border-radius: 20px;
-  background: color-mix(in srgb, var(--surface) 88%, transparent); -webkit-backdrop-filter: blur(24px) saturate(1.4); backdrop-filter: blur(24px) saturate(1.4);
-  border: 1px solid var(--glass-line); box-shadow: 0 24px 50px -20px rgba(20, 26, 46, .5); animation: rise .18s ease-out;
+  position: fixed; z-index: 400; width: 300px; padding: 6px; border-radius: 18px; overflow-y: auto; overscroll-behavior: contain;
+  background: var(--surface); border: 1px solid var(--line);
+  box-shadow: 0 1px 2px rgba(20, 26, 46, .08), 0 18px 44px -14px rgba(20, 26, 46, .38);
+  transform-origin: top right; animation: menu-in .16s cubic-bezier(.2, .8, .3, 1);
 }
-.pop-title { padding: 8px 12px 4px; font-size: 12px; color: var(--muted); }
+/* 从按钮那里轻轻展开，不再斜着飞进来 */
+@keyframes menu-in { from { opacity: 0; transform: scale(.97) translateY(-4px); } }
+.pop-sec + .pop-sec { margin-top: 4px; padding-top: 4px; border-top: 1px solid var(--line); }
+.pop-title { padding: 8px 10px 6px; font-size: 12px; color: var(--muted); }
 .pop-sep { border: 0; border-top: 1px solid var(--line); margin: 6px 10px; }
-.pop-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 10px 12px; border: 0; border-radius: 14px; background: none; color: inherit; text-align: left; }
-.pop-item:hover, .pop-item:focus-visible { background: color-mix(in srgb, var(--accent) 12%, transparent); outline: none; }
-.pop-icon { flex: none; display: grid; place-items: center; width: 36px; height: 36px; border-radius: 11px; background: color-mix(in srgb, var(--accent) 14%, transparent); color: var(--accent); }
+.pop-item { display: flex; align-items: center; gap: 12px; width: 100%; padding: 9px 10px; border: 0; border-radius: 12px; background: none; color: inherit; text-align: left; }
+.pop-item:hover, .pop-item:focus-visible, .pop-tile:hover, .pop-tile:focus-visible { background: color-mix(in srgb, var(--accent) 10%, transparent); outline: none; }
+.pop-icon { flex: none; display: grid; place-items: center; width: 34px; height: 34px; border-radius: 10px; background: color-mix(in srgb, var(--accent) 12%, transparent); color: var(--accent); }
 .pop-text { display: flex; flex-direction: column; min-width: 0; }
-.pop-text b { font-size: 15px; font-weight: 600; }
+.pop-text b { font-size: 14.5px; font-weight: 600; }
 .pop-text small { font-size: 12px; color: var(--muted); }
+.pop-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 2px; padding: 0 2px 4px; }
+.pop-tile { display: flex; flex-direction: column; align-items: center; gap: 6px; padding: 10px 4px 9px; border: 0; border-radius: 12px; background: none; color: inherit; min-width: 0; }
+.pop-tile b { font-size: 12.5px; font-weight: 500; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pop-menu.is-import { width: 372px; }
+.pop-menu.is-import .pop-sec:first-child .pop-item { padding-block: 11px; }
+/* 手机：从底部升起的面板 */
+.pop-scrim { position: fixed; inset: 0; z-index: 399; background: rgba(12, 16, 28, .32); animation: fade .2s ease-out; }
+.pop-menu.is-sheet {
+  left: 0; right: 0; bottom: 0; top: auto; width: auto; max-height: 82dvh;
+  padding: 4px 10px calc(12px + var(--safe-b, 0px)); border-radius: 22px 22px 0 0; border-width: 1px 0 0;
+  animation: sheet-up .26s cubic-bezier(.2, .8, .3, 1);
+}
+@keyframes sheet-up { from { transform: translateY(100%); } }
+.pop-grabber { width: 38px; height: 5px; border-radius: 3px; margin: 6px auto 6px; background: var(--line); }
+.pop-menu.is-sheet .pop-grid { grid-template-columns: repeat(4, 1fr); }
+@media (prefers-reduced-motion: reduce) { .pop-menu, .pop-menu.is-sheet { animation: fade .12s; } }
 
 /* ---------- 设置：网盘 ---------- */
 .cloud-head { display: flex; gap: 14px; align-items: flex-start; }
@@ -1409,7 +1429,7 @@ button.tag-chip:hover { background: color-mix(in srgb, #8B7BD8 22%, transparent)
 .pop-item.is-on b { color: var(--accent); }
 .pop-item[role=menuitemradio] { padding-top: 6px; padding-bottom: 6px; }
 .pop-item[role=menuitemradio] .pop-icon { width: 24px; height: 24px; background: none; }
-.pop-menu { max-height: calc(100dvh - 90px); overflow-y: auto; }
+.pop-menu:not(.is-sheet) { max-height: calc(100dvh - 90px); }
 
 /* ---------- 滚动条：细细一条，不带箭头和轨道，鼠标靠近才变深 ---------- */
 ::-webkit-scrollbar { width: 12px; height: 12px; background: transparent; }

@@ -1,4 +1,5 @@
 // 数据层：服务器 API、本地缓存（IndexedDB）、进度同步。
+import { frontRect, cropBlob, probeLayout } from './pagefit.js';
 import { ZipReader, mimeOf, isImageName } from './zip.js';
 import { Epub } from './epub.js';
 
@@ -496,7 +497,16 @@ export async function coverUrl(book) {
   return job;
 }
 
-async function shrinkCover(blob) {
+// 漫画第一页是整张书衣（比正面宽很多）时只留正面
+const comicRtl = () => prefs.get('comic', {}).rtl !== false;
+async function frontOnly(blob) {
+  const bmp = await createImageBitmap(blob);
+  const wide = bmp.width / bmp.height > 1.2;
+  bmp.close?.();
+  return wide ? cropBlob(blob, (b) => frontRect(b, comicRtl())) : blob;
+}
+async function shrinkCover(blob, { wrap = false } = {}) {
+  if (wrap) blob = await frontOnly(blob).catch(() => blob);
   const bmp = await createImageBitmap(blob);
   const scale = Math.min(1, 600 / bmp.width);
   const canvas = document.createElement('canvas');
@@ -689,7 +699,7 @@ export function guessSeries(title) {
 }
 export const seriesLabel = (book) => (book.series ? `${book.series}${book.volume != null ? ` ${book.volume}` : ''}` : book.title);
 
-async function inspect(file, fileName = file.name) {
+async function inspect(file, fileName = file.name, { layout = true } = {}) {
   const name = fileName.replace(/\.[^.]+$/, '');
   const ext = fileName.slice(fileName.lastIndexOf('.') + 1).toLowerCase();
   if (ext === 'epub') {
@@ -703,7 +713,9 @@ async function inspect(file, fileName = file.name) {
     const zip = await ZipReader.open(file);
     const pages = zip.entries.filter((e) => !e.isDir && isImageName(e.name)).sort((a, b) => natural(a.name, b.name));
     if (!pages.length) throw new Error('压缩包里没有找到图片');
-    return { format: 'cbz', title: name, author: '', cover: await zip.blobOf(pages[0], mimeOf(pages[0].name)), ...guessSeries(name) };
+    // 本机文件顺便识别版面（哪些页是两页拼图）；网盘里的书等第一次打开时再识别，免得导入时整本下载
+    const pageLayout = layout ? await probeLayout(zip, pages).catch(() => '') : '';
+    return { format: 'cbz', title: name, author: '', cover: await zip.blobOf(pages[0], mimeOf(pages[0].name)), pageLayout, ...guessSeries(name) };
   }
   throw new Error('只支持 EPUB 和 CBZ / ZIP');
 }
@@ -726,6 +738,7 @@ function patchLocal(book, body) {
   if (typeof body.bangumiId === 'number' || body.bangumiId === null) book.bangumiId = body.bangumiId;
   if (typeof body.published === 'string') book.published = /^\d{4}(-\d{2}(-\d{2})?)?$/.test(body.published.trim()) ? body.published.trim() : '';
   if (typeof body.spineFace === 'string') book.spineFace = body.spineFace;
+  if (typeof body.pageLayout === 'string') book.pageLayout = /^[pwc]{0,20000}$/.test(body.pageLayout) ? body.pageLayout : '';
   if ('volume' in body) book.volume = body.volume === null || body.volume === '' || !Number.isFinite(Number(body.volume)) ? null : Number(body.volume);
   if (!book.series) book.volume = null;
   if (Array.isArray(body.collections)) book.collections = [...new Set(body.collections.filter((c) => state.collections[c]))];
@@ -735,9 +748,9 @@ function patchLocal(book, body) {
 /** 导入一本书：本地解析书名、封面和简介 → 账号模式上传到服务器，本机模式直接存下 → 都留一份在本机 */
 export async function importBook(file, collectionIds = []) {
   const info = await inspect(file);
-  const extra = { description: info.description || '', ...(info.published ? { published: info.published } : {}) };
+  const extra = { description: info.description || '', ...(info.published ? { published: info.published } : {}), ...(info.pageLayout ? { pageLayout: info.pageLayout } : {}) };
   let saved, duplicate = false, jpg = null;
-  if (info.cover) jpg = await shrinkCover(info.cover).catch(() => null);
+  if (info.cover) jpg = await shrinkCover(info.cover, { wrap: info.format === 'cbz' }).catch(() => null);
   if (account()) {
     const q = new URLSearchParams({
       format: info.format, title: info.title, author: info.author, name: file.name, collections: collectionIds.join(','),
@@ -750,7 +763,7 @@ export async function importBook(file, collectionIds = []) {
         try { saved = (await (await api(`/api/books/${saved.id}/cover`, { method: 'PUT', body: jpg })).json()).book; }
         catch { /* 封面失败不影响书 */ }
       }
-      if (extra.description || extra.published) saved = (await apiJson('/api/books/' + saved.id, 'PATCH', extra).catch(() => ({ book: saved }))).book;
+      if (extra.description || extra.published || extra.pageLayout) saved = (await apiJson('/api/books/' + saved.id, 'PATCH', extra).catch(() => ({ book: saved }))).book;
     }
   } else {
     const dup = Object.values(state.books).find((b) => b.size === file.size && b.fileName === file.name);
@@ -758,7 +771,7 @@ export async function importBook(file, collectionIds = []) {
     const now = Date.now();
     saved = {
       id: randomId(), format: info.format, size: file.size, title: info.title, author: info.author || '',
-      illustrator: info.illustrator || '', publisher: info.publisher || '', description: extra.description, published: extra.published || '', status: '', rating: 0, review: '',
+      illustrator: info.illustrator || '', publisher: info.publisher || '', description: extra.description, published: extra.published || '', pageLayout: extra.pageLayout || '', status: '', rating: 0, review: '',
       series: info.series || '', volume: info.volume ?? null, fileName: file.name,
       collections: collectionIds.filter((c) => state.collections[c]), hasCover: !!jpg, coverAt: jpg ? now : 0, addedAt: now, updatedAt: now,
     };
@@ -861,10 +874,10 @@ async function finishCloudBook(book) {
   let info;
   if (isPageDir(book)) {
     const src = await new PageListSource(book).load();
-    info = { cover: await src.blobOf(src.entries[0]), ...(book.series ? {} : guessSeries(book.title)) };
+    info = { format: 'cbz', cover: await src.blobOf(src.entries[0]), ...(book.series ? {} : guessSeries(book.title)) };
   } else {
     const src = remoteOf(book);
-    try { info = await inspect(src, book.fileName || `${book.title}.${book.format}`); }
+    try { info = await inspect(src, book.fileName || `${book.title}.${book.format}`, { layout: false }); }
     finally { remotes.delete(book.id); }
   }
   const patch = {};
@@ -874,13 +887,36 @@ async function finishCloudBook(book) {
   if (!book.series && info.series) { patch.series = info.series; patch.volume = info.volume; }
   if (Object.keys(patch).length) state.books[book.id] = (await apiJson('/api/books/' + book.id, 'PATCH', patch)).book;
   if (info.cover) {
-    const jpg = await shrinkCover(info.cover).catch(() => null);
+    const jpg = await shrinkCover(info.cover, { wrap: info.format === 'cbz' }).catch(() => null);
     if (jpg) {
       const saved = (await (await api(`/api/books/${book.id}/cover`, { method: 'PUT', body: jpg })).json()).book;
       state.books[book.id] = saved;
       local.put('covers', book.id, { at: saved.coverAt, blob: jpg }).catch(() => {});
     }
   }
+  persist(); emit();
+}
+
+/** 漫画封面重新生成：mode 'front' 只要整张书衣的正面，'full' 用第一页原图 */
+export async function remakeComicCover(id, mode = 'front') {
+  const book = state.books[id];
+  const { source, release } = await bookSource(book);
+  let blob;
+  try {
+    const zip = source.isPageList ? source : await ZipReader.open(source);
+    const pages = zip.entries.filter((e) => !e.isDir && isImageName(e.name)).sort((a, b) => natural(a.name, b.name));
+    if (!pages.length) throw new Error('没有找到图片');
+    blob = await zip.blobOf(pages[0], mimeOf(pages[0].name));
+  } finally { release(); }
+  if (mode === 'front') blob = await frontOnly(blob);
+  const jpg = await shrinkCover(blob);
+  if (!jpg) throw new Error('封面生成失败');
+  if (account()) {
+    state.books[id] = (await (await api(`/api/books/${id}/cover`, { method: 'PUT', body: jpg })).json()).book;
+  } else {
+    Object.assign(book, { hasCover: true, coverAt: Date.now() });
+  }
+  local.put('covers', id, { at: state.books[id].coverAt, blob: jpg }).catch(() => {});
   persist(); emit();
 }
 

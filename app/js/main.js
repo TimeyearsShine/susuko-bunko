@@ -782,6 +782,19 @@ function applyFabStyle() {
 }
 
 // ---------- 图书详情 ----------
+// 漫画封面：扫图第一页常常是整张书衣（封底 + 书脊 + 封面），可以只留正面，也可以换回原图
+function coverMenu(anchor, b) {
+  const run = (mode, done) => async () => {
+    const t = toast('正在重新生成封面…', { sticky: true });
+    try { await store.remakeComicCover(b.id, mode); t.done(done); renderBody(); if (view.detail === b.id) renderDetail(); }
+    catch (e) { t.done(e.message || '封面生成失败', true); }
+  };
+  popMenu(anchor, [{ title: '封面', items: [
+    { icon: 'crop', label: '只要正面', sub: '第一页是整张书衣时，裁出正面那一块', onclick: run('front', '已裁出正面') },
+    { icon: 'pages', label: '用第一页原图', sub: '不裁剪', onclick: run('full', '已换回原图') },
+  ] }]);
+}
+
 function showDetail(id) { view.detail = id; view.autoDetail = false; renderDetail(); }
 function hideDetail() { view.detail = null; view.autoDetail = false; renderDetail(); }
 function renderDetail() {
@@ -819,7 +832,8 @@ function renderDetail() {
           h('div.detail-tags', b.collections.map((c) => state.collections[c] && h('button.chip-tag', { type: 'button', onclick: () => setFilter(c) }, state.collections[c].name))))),
       h('div.detail-actions',
         h('button.btn.is-primary.is-grow', { type: 'button', onclick: () => openBook(b.id) }, icon('dict', 18), p > 0 ? '继续阅读' : '开始阅读'),
-        h('button.btn', { type: 'button', onclick: () => editBook(b.id) }, '编辑信息')),
+        h('button.btn', { type: 'button', onclick: () => editBook(b.id) }, '编辑信息'),
+        b.format === 'cbz' && h('button.icon-btn', { type: 'button', 'aria-label': '封面', title: '封面', 'aria-haspopup': 'menu', onclick: (e) => coverMenu(e.currentTarget, b) }, icon('crop', 20))),
       h('section.detail-sec', h('h3', '简介'), desc, more),
       (b.tags || []).length > 0 && h('section.detail-sec', h('h3', '标签'),
         h('div.tag-row', b.tags.map((t) => h('button.tag-chip', { type: 'button', title: `看看所有 #${t} 的书`, onclick: () => setFilter('tag:' + t) }, '#' + t)))),
@@ -1784,18 +1798,25 @@ function settingsData() {
 // ---------- 导入 ----------
 // ---------- 导入菜单：本机文件 / 百度网盘 ----------
 let closeApplePopMenu;
-function popMenu(anchor, sections) {
+// 弹出菜单。sections: [{ title, grid, items: [{ icon, label, sub, onclick, on }] }]；grid 的分组排成小方块。
+// 电脑上贴着按钮弹出；手机上从底部升起（点空白处收起）。cls 给菜单加额外的样式名。
+function popMenu(anchor, sections, { cls = '' } = {}) {
   closeApplePopMenu?.();
   document.querySelector('.pop-menu')?.remove();
-  const menu = h('div.pop-menu', { role: 'menu' }, sections.map((sec, i) => [
-    i > 0 && h('hr.pop-sep'),
+  document.querySelector('.pop-scrim')?.remove();
+  const item = (it) => h('button.pop-item' + (it.on ? '.is-on' : ''), { type: 'button', role: it.on != null ? 'menuitemradio' : 'menuitem', 'aria-checked': it.on != null ? String(!!it.on) : null, onclick: () => { close(); it.onclick(); } },
+    h('span.pop-icon', icon(it.icon, 20)), h('span.pop-text', h('b', it.label), it.sub && h('small', it.sub)));
+  const tile = (it) => h('button.pop-tile', { type: 'button', role: 'menuitem', title: it.sub || '', onclick: () => { close(); it.onclick(); } },
+    h('span.pop-icon', icon(it.icon, 20)), h('b', it.label));
+  const menu = h('div.pop-menu' + (cls ? '.' + cls : ''), { role: 'menu' }, sections.map((sec, i) => h('div.pop-sec',
     sec.title && h('div.pop-title', sec.title),
-    sec.items.map((it) => h('button.pop-item' + (it.on ? '.is-on' : ''), { type: 'button', role: it.on != null ? 'menuitemradio' : 'menuitem', 'aria-checked': it.on != null ? String(!!it.on) : null, onclick: () => { close(); it.onclick(); } },
-      h('span.pop-icon', icon(it.icon, 20)), h('span.pop-text', h('b', it.label), it.sub && h('small', it.sub)))),
-  ]));
-  let stopPositioning;
+    sec.grid ? h('div.pop-grid', sec.items.map(tile)) : sec.items.map(item))));
+  let stopPositioning, scrim = null, closed = false;
   const close = () => {
-    menu.remove();
+    if (closed) return;
+    closed = true;
+    if (scrim) { scrim.remove(); menu.animate([{ transform: 'none' }, { transform: 'translateY(100%)' }], { duration: 180, easing: 'ease-in' }).finished.then(() => menu.remove(), () => menu.remove()); }
+    else menu.remove();
     document.removeEventListener('pointerdown', outside, true);
     document.removeEventListener('keydown', esc, true);
     stopPositioning?.();
@@ -1837,18 +1858,30 @@ function popMenu(anchor, sections) {
     menu.querySelector('button')?.focus({ preventScroll: true });
     return;
   }
-  const r = anchor.getBoundingClientRect();
-  menu.style.top = `${r.bottom + 8}px`;
-  menu.style.left = `${Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, r.right - menu.offsetWidth))}px`;
+  if (innerWidth <= 760) { // 手机：底部弹出的面板
+    menu.classList.add('is-sheet');
+    scrim = h('div.pop-scrim', { onclick: () => close() });
+    menu.before(scrim);
+    menu.prepend(h('div.pop-grabber', { 'aria-hidden': 'true' }));
+  } else {
+    const r = anchor.getBoundingClientRect();
+    const left = Math.max(8, Math.min(innerWidth - menu.offsetWidth - 8, r.right - menu.offsetWidth));
+    const room = innerHeight - r.bottom - 16;
+    if (menu.offsetHeight > room && r.top > room) { menu.style.bottom = `${innerHeight - r.top + 8}px`; menu.style.maxHeight = `${r.top - 16}px`; menu.style.transformOrigin = 'bottom right'; }
+    else { menu.style.top = `${r.bottom + 8}px`; menu.style.maxHeight = `${room}px`; }
+    menu.style.left = `${left}px`;
+    // 从按钮的方向长出来
+    if (r.left + r.width / 2 < left + menu.offsetWidth / 2) menu.style.transformOrigin = menu.style.transformOrigin.replace('right', 'left') || 'top left';
+  }
   setTimeout(() => { document.addEventListener('pointerdown', outside, true); document.addEventListener('keydown', esc, true); });
   menu.querySelector('button')?.focus();
 }
 async function importMenu(anchor) {
   await Promise.race([refreshMounts(), new Promise((r) => setTimeout(r, 400))]); // 列出已有的挂载；网络慢就先用上次的
   popMenu(anchor, [
-    { items: [{ icon: 'upload', label: '从这台设备选文件', sub: 'EPUB、CBZ / ZIP', onclick: () => els.fileInput.click() }] },
+    { items: [{ icon: 'upload', label: '从这台设备选文件', sub: innerWidth > 760 ? 'EPUB、CBZ / ZIP，也可以直接拖进窗口' : 'EPUB、CBZ / ZIP', onclick: () => els.fileInput.click() }] },
     ...importMenuSections({ openBaidu: () => openBaiduBrowser(), onChanged: () => renderBody(), importFiles }),
-  ]);
+  ], { cls: 'is-import' });
 }
 
 // ---------- 百度网盘 ----------

@@ -30,12 +30,12 @@ export function importMenuSections({ openBaidu, onChanged, importFiles }) {
   const known = cachedMounts;
   return [
     known.length ? { title: '已挂载', items: known.map((m) => ({ icon: KIND_ICON[m.kind], label: m.name, sub: KIND_NAME[m.kind], onclick: () => openMountBrowser(m, { importFiles }) })) } : null,
-    { title: '服务器', items: [
+    { title: '连接书库', grid: true, items: [
       { icon: 'cloud', label: 'WebDAV', sub: '坚果云、NAS、AList', onclick: () => openMountForm('webdav', { onChanged, importFiles }) },
       { icon: 'folder', label: 'SMB / NAS', sub: '先挂到服务器上的目录', onclick: () => openMountForm('smb', { onChanged, importFiles }) },
       { icon: 'books', label: 'OPDS', sub: 'Calibre、Komga 等书库', onclick: () => openMountForm('opds', { onChanged, importFiles }) },
     ] },
-    { title: '网盘', items: [
+    { title: '网盘（百度直连，其余经 AList / OpenList）', grid: true, items: [
       { icon: 'cloud', label: '百度网盘', sub: '直接连接', onclick: openBaidu },
       ...NETDISKS.map(([id, name]) => ({ icon: 'cloud', label: name, sub: '经 AList / OpenList', onclick: () => openMountForm('webdav', { onChanged, importFiles, netdisk: name }) })),
     ] },
