@@ -713,7 +713,8 @@ function drawShelfCaption() {
     ? [b.author, `共 ${it.group.books.length} 卷`, store.volName(b) && st !== 'unread' && `读到${store.volName(b)}`]
     : [b.author, b.illustrator && `插画 ${b.illustrator}`, { reading: `在读 ${fmtPercent(Math.min(p, 0.99))}`, finished: '已读完', unread: '未读' }[st]];
   const first = it.group.series ? [...it.group.books].sort(byVolume)[0] : b;
-  const inSeries = isSeries(view.filter) && state.series[view.filter.slice(7)]?.description;
+  const seriesName = isSeries(view.filter) ? view.filter.slice(7) : '';
+  const inSeries = seriesName && state.series[seriesName]?.description;
   const desc = (it.group.series && state.series[it.group.series]?.description) || first.description || b.description || inSeries || '';
   const open = () => openShelfItem(it);
   sh.caption.replaceChildren(
@@ -729,6 +730,7 @@ function drawShelfCaption() {
           h('span.cap-count', h('b', String(view.spineIndex + 1)), ` / ${total}`),
           h('button.icon-btn', { type: 'button', 'aria-label': '下一本', onclick: () => sh.api.next() }, icon('next'))),
         !it.group.series && h('button.btn', { type: 'button', onclick: () => showDetail(b.id) }, '详情'),
+        seriesName && h('button.btn', { type: 'button', onclick: () => editBooksBatch(booksIn('series:' + seriesName).map((book) => book.id), seriesName) }, '整套编辑'),
         h('button.btn.is-primary', { type: 'button', onclick: open }, it.group.series ? '打开系列' : p > 0 ? '继续阅读' : '开始阅读'))),
     h('p.cap-desc' + (desc ? '' : '.is-empty'), desc ? desc.replace(/\s*\n\s*/g, ' ') : '还没有简介，可以在“编辑信息”里写。'));
   // 书架下面已经有标题和简介，不再自动弹出右侧详情；以前自动弹出的，滑走就关掉

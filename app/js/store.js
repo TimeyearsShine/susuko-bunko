@@ -997,6 +997,7 @@ export async function uploadLocalLibrary(onStep) {
       book = (await apiJson('/api/books/' + book.id, 'PATCH', {
         description: b.description || '', status: b.status || '', rating: b.rating || 0, review: b.review || '',
         imprint: b.imprint || '', imprintMark: b.imprintMark || '', published: b.published || '', tags: b.tags || [], originalTitle: b.originalTitle || '',
+          ...(b.volumeLabel ? { volumeLabel: b.volumeLabel } : {}),
         collections: (b.collections || []).map((c) => colMap[c]).filter(Boolean),
       })).book;
       idMap[b.id] = book.id;

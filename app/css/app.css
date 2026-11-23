@@ -1144,7 +1144,7 @@ select.field { appearance: auto; }
   .cap-cover, .cap-cover .cover { width: 46px; }
   .cap-main { flex-basis: calc(100% - 60px); }
   .cap-main h2 { font-size: 18px; }
-  .cap-actions { width: 100%; }
+  .cap-actions { width: 100%; flex-wrap: wrap; }
   .cap-actions .btn.is-primary { flex: 1; }
   .cap-desc { -webkit-line-clamp: 2; font-size: 13.5px; }
 }
