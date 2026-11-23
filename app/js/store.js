@@ -697,7 +697,10 @@ export function guessSeries(title) {
   if (series.length < 2 || !Number.isFinite(volume)) return null;
   return { series, volume };
 }
-export const seriesLabel = (book) => (book.series ? `${book.series}${book.volume != null ? ` ${book.volume}` : ''}` : book.title);
+/** 卷号显示成什么：短篇 / 番外用自己的名字（安可短篇集、SSS），否则是数字 */
+export const volText = (book) => (book.series ? book.volumeLabel || (book.volume != null ? String(book.volume) : '') : '');
+export const volName = (book) => (book.series ? book.volumeLabel || (book.volume != null ? `第 ${book.volume} 卷` : '') : '');
+export const seriesLabel = (book) => (book.series ? `${book.series}${volText(book) ? ` ${volText(book)}` : ''}` : book.title);
 
 async function inspect(file, fileName = file.name, { layout = true } = {}) {
   const name = fileName.replace(/\.[^.]+$/, '');
@@ -740,7 +743,8 @@ function patchLocal(book, body) {
   if (typeof body.spineFace === 'string') book.spineFace = body.spineFace;
   if (typeof body.pageLayout === 'string') book.pageLayout = /^[pwc]{0,20000}$/.test(body.pageLayout) ? body.pageLayout : '';
   if ('volume' in body) book.volume = body.volume === null || body.volume === '' || !Number.isFinite(Number(body.volume)) ? null : Number(body.volume);
-  if (!book.series) book.volume = null;
+  if (typeof body.volumeLabel === 'string') book.volumeLabel = body.volumeLabel.trim().slice(0, 40);
+  if (!book.series) { book.volume = null; book.volumeLabel = ''; }
   if (Array.isArray(body.collections)) book.collections = [...new Set(body.collections.filter((c) => state.collections[c]))];
   book.updatedAt = Date.now();
 }
@@ -993,6 +997,7 @@ export async function uploadLocalLibrary(onStep) {
       book = (await apiJson('/api/books/' + book.id, 'PATCH', {
         description: b.description || '', status: b.status || '', rating: b.rating || 0, review: b.review || '',
         imprint: b.imprint || '', imprintMark: b.imprintMark || '', published: b.published || '', tags: b.tags || [], originalTitle: b.originalTitle || '',
+          ...(b.volumeLabel ? { volumeLabel: b.volumeLabel } : {}),
         collections: (b.collections || []).map((c) => colMap[c]).filter(Boolean),
       })).book;
       idMap[b.id] = book.id;

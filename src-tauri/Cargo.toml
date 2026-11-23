@@ -1,6 +1,6 @@
 [package]
 name = "susuko-bunko"
-version = "0.13.3"
+version = "0.13.4"
 description = "Susuko Bunko - light novel and manga reader"
 edition = "2021"
 
